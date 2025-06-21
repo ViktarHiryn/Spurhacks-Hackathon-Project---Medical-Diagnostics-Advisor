@@ -547,7 +547,10 @@ const ChatInterface = () => {
               exit={{ opacity: 0, height: 0 }}
               className="mt-4"
             >
-              <DocumentUploader onUpload={handleDocumentUpload} />
+              <DocumentUploader
+                onUpload={handleDocumentUpload}
+                onClose={() => setShowUploader(false)}
+              />
             </motion.div>
           )}
         </AnimatePresence>

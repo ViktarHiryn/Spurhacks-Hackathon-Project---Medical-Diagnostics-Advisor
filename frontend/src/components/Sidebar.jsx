@@ -31,7 +31,7 @@ const Sidebar = () => {
       path: "/",
       icon: MessageCircle,
       label: "AI Doctor Chat",
-      description: "Talk to your AI doctor",
+      description: "Chat & video analysis with AI doctor",
     },
     {
       path: "/medications",

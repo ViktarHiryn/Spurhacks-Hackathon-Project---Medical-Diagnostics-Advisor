@@ -1,56 +1,11 @@
-# # import cv2
 
-# # # 1. Open a connection to the webcam (0 is usually the default camera)
-# # cap = cv2.VideoCapture(0)
-
-# # # 2. Define the codec and create VideoWriter object
-# # fourcc = cv2.VideoWriter_fourcc(*'XVID')  # Codec: XVID is widely supported
-# # out = cv2.VideoWriter('output.avi', fourcc, 20.0, (640, 480))  # filename, codec, FPS, resolution
-
-# # # 3. Start capturing frames
-# # print("Recording started. Press 'q' to stop.")
-# # while cap.isOpened():
-# #     ret, frame = cap.read()
-# #     if not ret:
-# #         break
-
-# #     # Write the frame to the output file
-# #     out.write(frame)
-
-# #     # Optionally display the frame while recording
-# #     cv2.imshow('Recording...', frame)
-
-# #     # Break the loop when 'q' is pressed
-# #     if cv2.waitKey(1) & 0xFF == ord('q'):
-# #         break
-
-# # # 4. Release everything when done
-# # cap.release()
-# # out.release()
-# # cv2.destroyAllWindows()
-# # print("Recording finished. Saved as 'output.avi'")
-
-# import subprocess
-
-# # Set your recording duration (in seconds)
-# duration = 10
-
-# # FFmpeg command (for Windows using DirectShow)
-# cmd = [
-#     'ffmpeg',
-#     '-f', 'dshow',
-#     '-i', 'video=HP Truevision HD:audio=Stereo Mix (2- Realtek High Definition Audio)',
-#     '-t', str(duration),
-#     'output.mp4'
-# ]
-
-# print("Recording video with audio for", duration, "seconds...")
-# subprocess.run(cmd)
-# print("Recording complete. Saved as output.mp4")
 import os
 import subprocess
 import cv2
 import threading
+
+# --- Gemini AI imports ---
+import google.generativeai as genai
 
 # Set your recording duration (in seconds)
 duration = 10
@@ -63,7 +18,7 @@ ffmpeg_cmd = [
     'ffmpeg',
     '-y',
     '-f', 'dshow',
-    '-i', 'video=HP Truevision HD:audio=Stereo Mix (2- Realtek High Definition Audio)',
+    '-i', 'video=HP Truevision HD:audio=Microphone Array (2- Realtek High Definition Audio)',
     '-t', str(duration),
     output_filename
 ]
@@ -84,12 +39,40 @@ def preview_camera(duration):
     cap.release()
     cv2.destroyAllWindows()
 
-# Start FFmpeg recording in a separate thread
-ffmpeg_thread = threading.Thread(target=lambda: subprocess.run(ffmpeg_cmd))
-ffmpeg_thread.start()
+def analyze_video_with_gemini(video_path, api_key):
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Start OpenCV preview (optional)
-preview_camera(duration)
+    with open(video_path, "rb") as video_file:
+        video_bytes = video_file.read()
 
-ffmpeg_thread.join()
-print(f"Recording complete. Saved as {output_filename}")
+    prompt = (
+        "Analyze the mood of the person in this video. Describe their emotional state and any visible cues. What key events happened in the video and how many times does the person blink"
+    )
+
+    response = model.generate_content(
+        [
+            prompt,
+            {
+                "mime_type": "video/mp4",
+                "data": video_bytes
+            }
+        ]
+    )
+    print("\nGemini AI analysis result:")
+    print(response.text)
+
+if __name__ == "__main__":
+    # Start FFmpeg recording in a separate thread
+    ffmpeg_thread = threading.Thread(target=lambda: subprocess.run(ffmpeg_cmd))
+    ffmpeg_thread.start()
+
+    # Start OpenCV preview (optional)
+    preview_camera(duration)
+
+    ffmpeg_thread.join()
+    print(f"Recording complete. Saved as {output_filename}")
+
+    # --- Gemini AI Analysis ---
+    GEMINI_API_KEY = "AIzaSyDWxseOOjlozB-sdpI-v3u7MY0v3EdOAag"  # <-- Replace with your actual API key
+    analyze_video_with_gemini(output_filename, GEMINI_API_KEY)

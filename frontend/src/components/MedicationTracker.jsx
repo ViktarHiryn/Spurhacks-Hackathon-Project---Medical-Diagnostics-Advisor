@@ -33,7 +33,7 @@ const MedicationTracker = () => {
       // Add some sample medications for demo
       const sampleMeds = [
         {
-          id: 1,
+          id: Date.now() + 1, // More unique ID
           name: "Aspirin",
           dosage: "81mg",
           frequency: "Daily",
@@ -46,7 +46,7 @@ const MedicationTracker = () => {
           isActive: true,
         },
         {
-          id: 2,
+          id: Date.now() + 2, // More unique ID
           name: "Lisinopril",
           dosage: "10mg",
           frequency: "Daily",

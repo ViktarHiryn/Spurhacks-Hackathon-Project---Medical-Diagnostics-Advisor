@@ -58,6 +58,38 @@ class APIClient {
     });
   }
 
+  // Analyze video with Gemini
+  async analyzeVideo(formData) {
+    const url = `${this.baseURL}/api/video/analyze`;
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData, // FormData handles its own Content-Type
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Video analysis failed:", error);
+      throw error;
+    }
+  }
+
+  // Analyze chat history to extract diagnoses
+  async analyzeChatHistory(messages, userId = null) {
+    return this.request("/api/chat/analyze-history", {
+      method: "POST",
+      body: JSON.stringify({
+        messages: messages,
+        user_id: userId,
+      }),
+    });
+  }
+
   // Upload document (for future use)
   async uploadDocument(file, userId = null) {
     const formData = new FormData();

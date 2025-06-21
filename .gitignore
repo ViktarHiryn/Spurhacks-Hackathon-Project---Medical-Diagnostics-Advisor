@@ -10,6 +10,9 @@ lerna-debug.log*
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
+venv/
+.env/
+
 # Runtime data
 pids
 *.pid
@@ -40,6 +43,7 @@ build/Release
 
 # Dependency directories
 node_modules/
+package-lock.json
 jspm_packages/
 
 # Snowpack dependency directory (https://snowpack.dev/)
@@ -134,3 +138,8 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# miscellaneous
+.DS_Store
+*__pycache__*
+output.mp4

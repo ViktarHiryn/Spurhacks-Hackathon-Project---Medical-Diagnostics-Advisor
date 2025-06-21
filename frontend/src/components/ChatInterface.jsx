@@ -10,10 +10,15 @@ import {
   FileText,
   Camera,
   Loader2,
+  Play,
+  Square,
+  CheckCircle,
+  History,
 } from "lucide-react";
 import Avatar from "./Avatar";
 import TaskList from "./TaskList";
 import DocumentUploader from "./DocumentUploader";
+import DiagnosisResults from "./DiagnosisResults";
 import { useMediaStream } from "../hooks/useMediaStream";
 import { useSTT } from "../hooks/useSTT";
 import { useUser } from "../context/UserContext";
@@ -26,10 +31,12 @@ const ChatInterface = () => {
   const [showUploader, setShowUploader] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
   const [visionData, setVisionData] = useState(null);
+  const [isAnalyzingVideo, setIsAnalyzingVideo] = useState(false);
+  const [isAnalyzingHistory, setIsAnalyzingHistory] = useState(false);
+  const [diagnosisResults, setDiagnosisResults] = useState([]);
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
 
   const messagesEndRef = useRef(null);
-  const socketRef = useRef(null);
-  const frameIntervalRef = useRef(null);
 
   const { tasks, addTask } = useUser();
 
@@ -44,7 +51,14 @@ const ChatInterface = () => {
     stopCamera,
     toggleVideo,
     toggleAudio,
-    captureFrame,
+    // Recording functionality
+    isRecording,
+    recordedBlob,
+    recordingDuration,
+    startRecording,
+    stopRecording,
+    clearRecording,
+    formatDuration,
   } = useMediaStream();
 
   const {
@@ -57,24 +71,17 @@ const ChatInterface = () => {
     resetTranscript,
   } = useSTT();
 
-  // Initialize component (no socket needed for simple chat)
+  // Initialize component with welcome message
   useEffect(() => {
-    // Add initial welcome message
     setMessages([
       {
         id: 1,
         type: "ai",
         content:
-          "Hello! I'm your AI medical assistant. How can I help you today? Please remember that I provide general health information only and you should always consult with healthcare professionals for medical advice.",
+          "Hello! I'm your AI medical assistant. You can chat with me or record a video for health analysis. How can I help you today?",
         timestamp: new Date(),
       },
     ]);
-
-    return () => {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-      }
-    };
   }, []);
 
   // Auto-scroll to bottom of messages
@@ -89,42 +96,66 @@ const ChatInterface = () => {
     }
   }, [transcript]);
 
-  // Start frame capture when video is enabled
+  // Handle video recording completion
   useEffect(() => {
-    if (isVideoEnabled && stream) {
-      frameIntervalRef.current = setInterval(() => {
-        const frameData = captureFrame();
-        if (frameData) {
-          sendFrameForProcessing(frameData);
-        }
-      }, 2000); // Send frame every 2 seconds
-    } else {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-      }
+    if (recordedBlob && !isRecording) {
+      handleVideoRecorded();
     }
+  }, [recordedBlob, isRecording]);
 
-    return () => {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-      }
+  const handleVideoRecorded = async () => {
+    // Add user message indicating video was sent
+    const videoMessage = {
+      id: Date.now(),
+      type: "user",
+      content: `🎥 Video recorded (${formatDuration(
+        recordingDuration
+      )}) - Analyzing for health insights...`,
+      timestamp: new Date(),
+      isVideo: true,
     };
-  }, [isVideoEnabled, stream, captureFrame]);
 
-  const sendFrameForProcessing = async (frameData) => {
+    setMessages((prev) => [...prev, videoMessage]);
+    setIsAnalyzingVideo(true);
+
     try {
-      // TODO: Implement video frame processing with new backend
-      console.log("Frame processing not yet implemented");
-      // const response = await apiClient.uploadVideo(frameData, "", null);
-      // setVisionData(response);
-    } catch (error) {
-      console.error("Error processing frame:", error);
-    }
-  };
+      // Send video to backend for analysis
+      const formData = new FormData();
+      formData.append("video", recordedBlob, "recording.webm");
+      formData.append(
+        "prompt",
+        "Analyze this video for health-related information, symptoms, or medical concerns. Provide a detailed medical analysis."
+      );
 
-  // Handlers for future video/document features
-  const handleVisionData = (data) => {
-    setVisionData(data);
+      const result = await apiClient.analyzeVideo(formData);
+
+      // Add AI response with video analysis
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content: result.analysis,
+        timestamp: new Date(),
+        isVideoAnalysis: true,
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error("Video analysis failed:", error);
+
+      // Add error message
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content: `I'm sorry, I encountered an error while analyzing your video: ${error.message}. Please try recording again or switch to text chat.`,
+        timestamp: new Date(),
+        isError: true,
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsAnalyzingVideo(false);
+      clearRecording(); // Clear the recorded video
+    }
   };
 
   const sendMessage = async () => {
@@ -135,7 +166,6 @@ const ChatInterface = () => {
       type: "user",
       content: currentMessage,
       timestamp: new Date(),
-      visionData: visionData,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -200,288 +230,374 @@ const ChatInterface = () => {
   };
 
   const handleDocumentUpload = (file) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        type: "system",
-        content: `Document uploaded: ${file.name}`,
-        timestamp: new Date(),
-      },
-    ]);
-    setShowUploader(false);
+    console.log("Document uploaded:", file);
+    // TODO: Implement document processing
+  };
+
+  const handleAnalyzeHistory = async () => {
+    if (messages.length < 2) {
+      alert(
+        "Not enough conversation history to analyze. Please continue chatting with the AI doctor."
+      );
+      return;
+    }
+
+    setIsAnalyzingHistory(true);
+    try {
+      // Format messages for API
+      const formattedMessages = messages.map((message) => ({
+        type: message.type,
+        content: message.content,
+        timestamp: message.timestamp.toISOString(),
+        isVideo: message.isVideo || false,
+        isVideoAnalysis: message.isVideoAnalysis || false,
+      }));
+
+      const response = await apiClient.analyzeChatHistory(formattedMessages);
+
+      if (response.success) {
+        setDiagnosisResults(response.diagnoses);
+        setShowDiagnosis(true);
+        console.log("Extracted diagnoses:", response.diagnoses);
+      } else {
+        console.error("History analysis failed:", response.error);
+        alert(`Failed to analyze chat history: ${response.error}`);
+      }
+    } catch (error) {
+      console.error("Error analyzing history:", error);
+      alert(`Error analyzing chat history: ${error.message}`);
+    } finally {
+      setIsAnalyzingHistory(false);
+    }
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen bg-neutral-50">
+    <div className="flex-1 flex flex-col h-screen bg-white">
       {/* Header */}
       <div className="bg-white border-b border-neutral-200 p-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-neutral-900">
-              AI Doctor Consultation
-            </h1>
-            <p className="text-sm text-neutral-600">
-              Describe your symptoms for personalized medical guidance
-            </p>
+          <div className="flex items-center space-x-4">
+            <Avatar
+              isListening={isListening}
+              isProcessing={isProcessing || isAnalyzingVideo}
+              isVideoActive={isVideoEnabled}
+            />
+            <div>
+              <h2 className="text-xl font-bold text-neutral-900">
+                AI Medical Assistant
+              </h2>
+              <p className="text-sm text-neutral-600">
+                {isProcessing || isAnalyzingVideo
+                  ? isAnalyzingVideo
+                    ? "Analyzing your video..."
+                    : "Thinking..."
+                  : isListening
+                  ? "Listening..."
+                  : "Ready to help"}
+              </p>
+            </div>
           </div>
+
+          {/* Video Controls */}
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setShowTasks(!showTasks)}
-              className="btn-secondary text-sm"
-            >
-              Tasks ({tasks.length})
-            </button>
-            <button
-              onClick={() => setShowUploader(true)}
-              className="btn-primary text-sm"
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Upload Document
-            </button>
+            {isVideoEnabled && (
+              <>
+                {/* Recording Status */}
+                {isRecording && (
+                  <motion.div
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ repeat: Infinity, duration: 1 }}
+                    className="flex items-center space-x-2 px-3 py-1 bg-red-100 rounded-full"
+                  >
+                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <span className="text-sm font-medium text-red-700">
+                      REC {formatDuration(recordingDuration)}
+                    </span>
+                  </motion.div>
+                )}
+
+                {/* Recording Controls */}
+                {!isRecording ? (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={startRecording}
+                    className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>Record</span>
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={stopRecording}
+                    className="flex items-center space-x-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors"
+                  >
+                    <Square className="w-4 h-4" />
+                    <span>Stop</span>
+                  </motion.button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex">
-        {/* Chat Area */}
-        <div className="flex-1 flex flex-col">
-          {/* Avatar and Video */}
-          <div className="bg-white border-b border-neutral-200 p-6">
-            <div className="flex items-center justify-center space-x-8">
-              {/* AI Avatar */}
-              <Avatar
-                isListening={isListening}
-                isProcessing={isProcessing}
-                isSpeaking={false}
-                blinkData={visionData?.blinkData}
-              />
+      {/* Video Preview */}
+      {isVideoEnabled && (
+        <div className="bg-gray-900 p-4">
+          <div
+            className="relative bg-gray-800 rounded-lg overflow-hidden"
+            style={{ aspectRatio: "16/9", maxHeight: "200px" }}
+          >
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              autoPlay
+              muted
+              playsInline
+            />
 
-              {/* User Video */}
-              <div className="relative">
-                <div className="w-48 h-36 bg-neutral-900 rounded-xl overflow-hidden relative">
-                  {isVideoEnabled && stream ? (
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Camera className="w-8 h-8 text-neutral-400" />
-                    </div>
-                  )}
-
-                  {/* Vision Indicators */}
-                  {visionData && isVideoEnabled && (
-                    <div className="absolute top-2 left-2 bg-black bg-opacity-50 rounded px-2 py-1">
-                      <div className="text-xs text-white">
-                        {visionData.emotion && (
-                          <div>Emotion: {visionData.emotion}</div>
-                        )}
-                        {visionData.blinkRate && (
-                          <div>Blinks: {visionData.blinkRate}/min</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Video Controls */}
-                <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 flex space-x-2">
-                  <button
-                    onClick={isVideoEnabled ? toggleVideo : startCamera}
-                    className={`p-2 rounded-full ${
-                      isVideoEnabled
-                        ? "bg-green-500 hover:bg-green-600"
-                        : "bg-neutral-500 hover:bg-neutral-600"
-                    } text-white transition-colors`}
-                    disabled={videoLoading}
-                  >
-                    {videoLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : isVideoEnabled ? (
-                      <Video className="w-4 h-4" />
-                    ) : (
-                      <VideoOff className="w-4 h-4" />
-                    )}
-                  </button>
-                  <button
-                    onClick={toggleAudio}
-                    className={`p-2 rounded-full ${
-                      isAudioEnabled
-                        ? "bg-green-500 hover:bg-green-600"
-                        : "bg-red-500 hover:bg-red-600"
-                    } text-white transition-colors`}
-                    disabled={!stream}
-                  >
-                    {isAudioEnabled ? (
-                      <Mic className="w-4 h-4" />
-                    ) : (
-                      <MicOff className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
+            {videoError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-red-900 bg-opacity-90">
+                <p className="text-red-200 text-center">{videoError}</p>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Messages */}
-          <div className="flex-1 p-4 overflow-y-auto">
-            <div className="max-w-4xl mx-auto space-y-4">
-              <AnimatePresence>
-                {messages.map((message) => (
-                  <motion.div
-                    key={message.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    className={`flex ${
-                      message.type === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
-                        message.type === "user"
-                          ? "bg-primary-700 text-white rounded-br-md"
-                          : message.type === "ai"
-                          ? "bg-white border border-neutral-200 text-neutral-900 rounded-bl-md"
-                          : "bg-neutral-100 text-neutral-700 rounded-md"
-                      }`}
-                    >
-                      <p className="text-sm">{message.content}</p>
-                      {message.confidence && (
-                        <div className="text-xs mt-1 opacity-70">
-                          Confidence: {Math.round(message.confidence * 100)}%
-                        </div>
-                      )}
-                      <div
-                        className={`text-xs mt-1 ${
-                          message.type === "user"
-                            ? "text-primary-200"
-                            : "text-neutral-500"
-                        }`}
-                      >
-                        {message.timestamp.toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {isProcessing && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex justify-start"
-                >
-                  <div className="bg-white border border-neutral-200 rounded-2xl rounded-bl-md px-4 py-2">
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-primary-600" />
-                      <span className="text-sm text-neutral-600">
-                        AI is analyzing...
-                      </span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-
-          {/* Input Area */}
-          <div className="bg-white border-t border-neutral-200 p-4">
-            <div className="max-w-4xl mx-auto">
-              <div className="flex items-end space-x-4">
-                {/* Text Input */}
-                <div className="flex-1 relative">
-                  <textarea
-                    value={currentMessage}
-                    onChange={(e) => setCurrentMessage(e.target.value)}
-                    placeholder="Describe your symptoms or ask a question..."
-                    className="w-full px-4 py-3 border border-neutral-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                    rows="2"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                      }
-                    }}
-                  />
-                  {interimTranscript && (
-                    <div className="absolute bottom-full left-0 right-0 bg-neutral-100 px-4 py-2 rounded-t-xl border border-b-0 border-neutral-300">
-                      <span className="text-sm text-neutral-600 italic">
-                        {interimTranscript}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Voice Control */}
-                <button
-                  onClick={
-                    isListening ? handleStopListening : handleStartListening
-                  }
-                  disabled={!sttSupported}
-                  className={`p-3 rounded-xl transition-all duration-200 ${
-                    isListening
-                      ? "bg-red-500 hover:bg-red-600 text-white scale-110"
-                      : "bg-primary-700 hover:bg-primary-800 text-white"
-                  }`}
-                >
-                  {isListening ? (
-                    <MicOff className="w-5 h-5" />
-                  ) : (
-                    <Mic className="w-5 h-5" />
-                  )}
-                </button>
-
-                {/* Send Button */}
-                <button
-                  onClick={sendMessage}
-                  disabled={!currentMessage.trim() || isProcessing}
-                  className="btn-primary p-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
+            {videoLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-blue-900 bg-opacity-90">
+                <Loader2 className="w-8 h-8 text-blue-300 animate-spin" />
               </div>
-
-              {!sttSupported && (
-                <p className="text-xs text-amber-600 mt-2">
-                  Speech recognition is not supported in your browser. Please
-                  use text input.
-                </p>
-              )}
-            </div>
+            )}
           </div>
         </div>
+      )}
 
-        {/* Tasks Sidebar */}
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <AnimatePresence>
-          {showTasks && (
+          {messages.map((message) => (
             <motion.div
-              initial={{ x: 300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 300, opacity: 0 }}
-              className="w-80 bg-white border-l border-neutral-200"
+              key={message.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className={`flex ${
+                message.type === "user" ? "justify-end" : "justify-start"
+              }`}
             >
-              <TaskList onClose={() => setShowTasks(false)} />
+              <div
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  message.type === "user"
+                    ? message.isVideo
+                      ? "bg-purple-600 text-white"
+                      : "bg-primary-600 text-white"
+                    : message.isError
+                    ? "bg-red-100 text-red-800 border border-red-200"
+                    : message.isVideoAnalysis
+                    ? "bg-blue-50 text-blue-900 border border-blue-200"
+                    : "bg-neutral-100 text-neutral-800"
+                }`}
+              >
+                {message.isVideo && (
+                  <div className="flex items-center space-x-2 mb-1">
+                    <Video className="w-4 h-4" />
+                    <span className="text-xs font-medium">Video Analysis</span>
+                  </div>
+                )}
+
+                {message.isVideoAnalysis && (
+                  <div className="flex items-center space-x-2 mb-2">
+                    <CheckCircle className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-medium text-blue-700">
+                      AI Video Analysis
+                    </span>
+                  </div>
+                )}
+
+                <p className="whitespace-pre-wrap">{message.content}</p>
+
+                <div className="text-xs opacity-70 mt-1">
+                  {message.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {(isProcessing || isAnalyzingVideo) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-start"
+          >
+            <div className="bg-neutral-100 px-4 py-2 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>
+                  {isAnalyzingVideo ? "Analyzing video..." : "Thinking..."}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div className="bg-white border-t border-neutral-200 p-4">
+        <div className="flex items-center space-x-4">
+          {/* Video Toggle */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={isVideoEnabled ? stopCamera : startCamera}
+            disabled={videoLoading || isRecording}
+            className={`p-3 rounded-xl transition-colors ${
+              isVideoEnabled
+                ? "bg-blue-600 text-white hover:bg-blue-700"
+                : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
+            } ${
+              videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            {videoLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : isVideoEnabled ? (
+              <Video className="w-5 h-5" />
+            ) : (
+              <VideoOff className="w-5 h-5" />
+            )}
+          </motion.button>
+
+          {/* Audio Toggle */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleAudio}
+            disabled={!isVideoEnabled}
+            className={`p-3 rounded-xl transition-colors ${
+              isAudioEnabled && isVideoEnabled
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
+            } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
+          >
+            {isAudioEnabled && isVideoEnabled ? (
+              <Mic className="w-5 h-5" />
+            ) : (
+              <MicOff className="w-5 h-5" />
+            )}
+          </motion.button>
+
+          {/* Text Input */}
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={currentMessage}
+              onChange={(e) => setCurrentMessage(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              placeholder="Type your message..."
+              disabled={isProcessing || isAnalyzingVideo || isRecording}
+              className="w-full px-4 py-3 pr-12 border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+
+            {interimTranscript && (
+              <div className="absolute bottom-full left-0 right-0 bg-blue-50 border border-blue-200 rounded-t-xl px-4 py-2 text-sm text-blue-700">
+                <span className="opacity-70">Listening: </span>
+                {interimTranscript}
+              </div>
+            )}
+          </div>
+
+          {/* Send Button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={sendMessage}
+            disabled={
+              !currentMessage.trim() ||
+              isProcessing ||
+              isAnalyzingVideo ||
+              isRecording
+            }
+            className="px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Send className="w-5 h-5" />
+          </motion.button>
+
+          {/* Document Upload */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowUploader(!showUploader)}
+            className="p-3 rounded-xl bg-neutral-200 text-neutral-600 hover:bg-neutral-300 transition-colors"
+          >
+            <Upload className="w-5 h-5" />
+          </motion.button>
+        </div>
+
+        {/* Document Uploader */}
+        <AnimatePresence>
+          {showUploader && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-4"
+            >
+              <DocumentUploader onUpload={handleDocumentUpload} />
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* History Analysis Button */}
+        {messages.length > 1 && (
+          <div className="mt-4 text-center">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleAnalyzeHistory}
+              disabled={isAnalyzingHistory || isProcessing || isAnalyzingVideo}
+              className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+            >
+              {isAnalyzingHistory ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <History className="w-5 h-5" />
+              )}
+              <span className="font-medium">
+                {isAnalyzingHistory
+                  ? "Analyzing Chat History..."
+                  : "Extract Medical History"}
+              </span>
+            </motion.button>
+            <p className="text-xs text-neutral-500 mt-2">
+              Analyze this conversation to extract structured medical diagnoses
+              and recommendations
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Document Uploader Modal */}
-      {showUploader && (
-        <DocumentUploader
-          onUpload={handleDocumentUpload}
-          onClose={() => setShowUploader(false)}
-        />
-      )}
+      {/* Task List */}
+      <AnimatePresence>
+        {showTasks && (
+          <TaskList
+            isOpen={showTasks}
+            onClose={() => setShowTasks(false)}
+            tasks={tasks}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Diagnosis Results Modal */}
+      <DiagnosisResults
+        diagnoses={diagnosisResults}
+        isOpen={showDiagnosis}
+        onClose={() => setShowDiagnosis(false)}
+      />
     </div>
   );
 };

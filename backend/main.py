@@ -1,11 +1,14 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import logging
+import tempfile
+import aiofiles
+import json
 
 # Load environment variables
 load_dotenv()
@@ -37,7 +40,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Initialize Gemini model
 try:
     model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',  # Using flash for faster responses
+        model_name='gemini-2.5-flash',  # Using flash for faster responses
         system_instruction="""You are a helpful medical AI assistant. 
         
         Guidelines:
@@ -61,6 +64,42 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    success: bool
+    error: Optional[str] = None
+
+class VideoAnalysisResponse(BaseModel):
+    analysis: str
+    success: bool
+    error: Optional[str] = None
+    video_duration: Optional[float] = None
+    file_size: Optional[int] = None
+
+class ChatMessage(BaseModel):
+    type: str  # "user" or "ai"
+    content: str
+    timestamp: str
+    isVideo: Optional[bool] = False
+    isVideoAnalysis: Optional[bool] = False
+
+class ChatHistoryRequest(BaseModel):
+    messages: List[ChatMessage]
+    user_id: Optional[str] = None
+
+class DiagnosisData(BaseModel):
+    diagnosis: str
+    date: str
+    duration: str
+    symptoms: List[str]
+    confidence: float
+    followUpNeeded: bool
+    aiRecommendations: List[str]
+    visionData: Dict[str, Any]
+    voiceAnalysis: Dict[str, Any]
+    documents: int
+    tasksGenerated: int
+
+class ChatHistoryResponse(BaseModel):
+    diagnoses: List[DiagnosisData]
     success: bool
     error: Optional[str] = None
 
@@ -101,11 +140,8 @@ async def chat_with_ai(request: ChatRequest):
         
         logger.info("Successfully generated response from Gemini")
         
-        # Add medical disclaimer to response
-        ai_response = response.text
-        
         return ChatResponse(
-            response=ai_response,
+            response=response.text,
             success=True
         )
         
@@ -136,6 +172,230 @@ async def test_gemini():
             "error": str(e),
             "message": "Gemini API connection failed"
         }
+
+# Video analysis endpoint
+@app.post("/api/video/analyze", response_model=VideoAnalysisResponse)
+async def analyze_video(
+    video: UploadFile = File(..., description="Video file to analyze"),
+    prompt: str = Form(default="Analyze this video for health-related information, symptoms, or medical concerns. Provide a detailed analysis.")
+):
+    """
+    Analyze uploaded video using Gemini API for health-related insights
+    """
+    try:
+        logger.info(f"Received video analysis request. File: {video.filename}, Size: {video.size}")
+        
+        # Validate file type
+        if not video.content_type.startswith('video/'):
+            raise HTTPException(status_code=400, detail="File must be a video")
+        
+        # Check file size (limit to 50MB)
+        max_size = 50 * 1024 * 1024  # 50MB in bytes
+        if video.size and video.size > max_size:
+            raise HTTPException(status_code=400, detail="Video file too large (max 50MB)")
+        
+        # Create temporary file to store the video
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_file:
+            # Read video content and write to temp file
+            video_content = await video.read()
+            temp_file.write(video_content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Upload video file to Gemini
+            logger.info("Uploading video to Gemini API...")
+            video_file = genai.upload_file(temp_file_path)
+            
+            # Wait for processing to complete
+            logger.info("Waiting for video processing...")
+            import time
+            while video_file.state.name == "PROCESSING":
+                time.sleep(2)
+                video_file = genai.get_file(video_file.name)
+            
+            if video_file.state.name == "FAILED":
+                raise HTTPException(status_code=500, detail="Video processing failed")
+            
+            # Create the medical analysis prompt
+            medical_prompt = f"""
+            Please analyze this video from a medical/health perspective. Look for:
+            
+            1. **Physical Symptoms**: Any visible signs of discomfort, pain, unusual movements, or physical symptoms
+            2. **Behavioral Indicators**: Changes in speech patterns, energy levels, mood, or behavior that might indicate health issues
+            3. **Environmental Context**: Any relevant environmental factors that might affect health
+            4. **General Observations**: Overall appearance, skin color, posture, breathing patterns, etc.
+            
+            User's specific request: {prompt}
+            
+            Important Guidelines:
+            - Provide observations but emphasize that this is NOT a medical diagnosis
+            - Recommend consulting healthcare professionals for any concerns
+            - Be thorough but avoid causing unnecessary alarm
+            - Focus on objective observations rather than definitive conclusions
+            - If you see concerning symptoms, advise seeking medical attention
+            
+            Please provide a structured analysis with your observations and recommendations.
+            """
+            
+            # Generate analysis using Gemini
+            logger.info("Generating analysis with Gemini...")
+            response = model.generate_content([
+                video_file,
+                medical_prompt
+            ])
+            
+            if not response.text:
+                raise HTTPException(status_code=500, detail="Failed to generate video analysis")
+
+            logger.info("Video analysis completed successfully")
+            
+            return VideoAnalysisResponse(
+                analysis=response.text,
+                success=True,
+                file_size=len(video_content)
+            )
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_file_path)
+                logger.info("Temporary file cleaned up")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temp file: {cleanup_error}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in video analysis: {str(e)}")
+        return VideoAnalysisResponse(
+            analysis=f"I'm sorry, I encountered an error while analyzing your video: {str(e)}",
+            success=False,
+            error=str(e)
+        )
+
+# Chat history analysis endpoint
+@app.post("/api/chat/analyze-history", response_model=ChatHistoryResponse)
+async def analyze_chat_history(request: ChatHistoryRequest):
+    """
+    Analyze chat history to extract medical diagnoses and create structured medical records
+    """
+    try:
+        logger.info(f"Received chat history analysis request with {len(request.messages)} messages")
+        
+        if len(request.messages) < 2:
+            raise HTTPException(status_code=400, detail="Not enough chat history to analyze")
+        
+        # Format chat history for analysis
+        chat_text = ""
+        for msg in request.messages:
+            role = "Patient" if msg.type == "user" else "AI Doctor"
+            if msg.isVideo:
+                chat_text += f"{role}: [Video message] {msg.content}\n"
+            elif msg.isVideoAnalysis:
+                chat_text += f"{role}: [Video Analysis] {msg.content}\n"
+            else:
+                chat_text += f"{role}: {msg.content}\n"
+        
+        # Create analysis prompt
+        analysis_prompt = f"""
+        Analyze the following medical chat conversation and extract structured diagnosis information. 
+        
+        Chat History:
+        {chat_text}
+        
+        Please analyze this conversation and return a JSON array containing one object for each distinct medical diagnosis or health concern discussed. Each diagnosis object should have this exact structure:
+        
+        {{
+            "diagnosis": "Name of the condition/diagnosis",
+            "date": "Current date in MM/DD/YYYY format",
+            "duration": "Estimated consultation duration (e.g., '15 minutes')",
+            "symptoms": ["symptom1", "symptom2", "symptom3"],
+            "confidence": 0.85,
+            "followUpNeeded": true/false,
+            "aiRecommendations": ["recommendation1", "recommendation2", "recommendation3"],
+            "visionData": {{
+                "blinkRate": 18,
+                "eyeMovement": "Normal/Abnormal description",
+                "facialExpression": "Description of expression"
+            }},
+            "voiceAnalysis": {{
+                "tone": "Description of tone",
+                "pace": "Description of pace", 
+                "clarity": "Description of clarity"
+            }},
+            "documents": 1,
+            "tasksGenerated": 4
+        }}
+        
+        Guidelines:
+        - Only create diagnoses for actual medical conditions discussed
+        - Extract symptoms mentioned by the patient
+        - Base recommendations on the AI doctor's advice given
+        - Set confidence based on how certain the diagnosis seems (0.0 to 1.0)
+        - Set followUpNeeded to true if serious symptoms or ongoing monitoring needed
+        - For visionData and voiceAnalysis, use realistic medical values or "Normal" if not specifically discussed
+        - Estimate documents and tasksGenerated based on conversation complexity
+        - If no clear diagnoses, return empty array []
+        
+        Return ONLY the JSON array, no other text or formatting.
+        """
+        
+        # Generate analysis using Gemini
+        logger.info("Sending chat history to Gemini for analysis...")
+        response = model.generate_content(analysis_prompt)
+        
+        if not response.text:
+            logger.error("Empty response from Gemini API")
+            raise HTTPException(status_code=500, detail="Failed to generate analysis")
+        
+        # Parse JSON response
+        try:
+            # Clean the response text (remove any markdown formatting)
+            json_text = response.text.strip()
+            if json_text.startswith("```json"):
+                json_text = json_text[7:]
+            if json_text.endswith("```"):
+                json_text = json_text[:-3]
+            json_text = json_text.strip()
+            
+            # Parse JSON
+            diagnoses_data = json.loads(json_text)
+            
+            # Validate and convert to DiagnosisData objects
+            diagnoses = []
+            for diag_dict in diagnoses_data:
+                try:
+                    diagnosis = DiagnosisData(**diag_dict)
+                    diagnoses.append(diagnosis)
+                except Exception as validation_error:
+                    logger.warning(f"Failed to validate diagnosis data: {validation_error}")
+                    continue
+            
+            logger.info(f"Successfully extracted {len(diagnoses)} diagnoses from chat history")
+            
+            return ChatHistoryResponse(
+                diagnoses=diagnoses,
+                success=True
+            )
+            
+        except json.JSONDecodeError as json_error:
+            logger.error(f"Failed to parse JSON response: {json_error}")
+            logger.error(f"Raw response: {response.text}")
+            return ChatHistoryResponse(
+                diagnoses=[],
+                success=False,
+                error=f"Failed to parse diagnosis data: {str(json_error)}"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in chat history analysis: {str(e)}")
+        return ChatHistoryResponse(
+            diagnoses=[],
+            success=False,
+            error=str(e)
+        )
 
 if __name__ == "__main__":
     import uvicorn

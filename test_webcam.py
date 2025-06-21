@@ -3,9 +3,14 @@ import os
 import subprocess
 import cv2
 import threading
+from dotenv import load_dotenv
 
 # --- Gemini AI imports ---
 import google.generativeai as genai
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY is not set. Please set it in your environment variables.")
 
 # Set your recording duration (in seconds)
 duration = 10
@@ -75,5 +80,5 @@ if __name__ == "__main__":
     print(f"Recording complete. Saved as {output_filename}")
 
     # --- Gemini AI Analysis ---
-    GEMINI_API_KEY = "AIzaSyDWxseOOjlozB-sdpI-v3u7MY0v3EdOAag"  # <-- Replace with your actual API key
+    #   # <-- Replace with your actual API key
     analyze_video_with_gemini(output_filename, GEMINI_API_KEY)

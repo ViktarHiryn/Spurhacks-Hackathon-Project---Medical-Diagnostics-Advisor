@@ -2,104 +2,94 @@ import axios from "axios";
 import io from "socket.io-client";
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const API_BASE_URL = "http://localhost:8000";
 
-// Axios instance
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("aiDoctorToken");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+class APIClient {
+  constructor() {
+    this.baseURL = API_BASE_URL;
   }
-);
 
-// Response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("aiDoctorToken");
-      localStorage.removeItem("aiDoctorUser");
-      window.location.href = "/";
+  // Generic request method
+  async request(endpoint, options = {}) {
+    const url = `${this.baseURL}${endpoint}`;
+    const config = {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      ...options,
+    };
+
+    try {
+      const response = await fetch(url, config);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("API request failed:", error);
+      throw error;
     }
-    return Promise.reject(error);
   }
-);
 
-// Socket.IO instance
-let socket = null;
-
-export const connectSocket = () => {
-  if (!socket) {
-    socket = io(API_BASE_URL, {
-      transports: ["websocket"],
-      upgrade: true,
+  // Chat with AI
+  async sendChatMessage(message, userId = null) {
+    return this.request("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        message: message,
+        user_id: userId,
+      }),
     });
   }
-  return socket;
-};
 
-export const disconnectSocket = () => {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
+  // Test Gemini connection
+  async testGeminiConnection() {
+    return this.request("/api/test-gemini", {
+      method: "GET",
+    });
   }
-};
 
-// API Functions
-export const api = {
-  // Auth endpoints
-  auth: {
-    login: (credentials) => apiClient.post("/auth/login", credentials),
-    register: (userData) => apiClient.post("/auth/register", userData),
-    logout: () => apiClient.post("/auth/logout"),
-  },
+  // Health check
+  async healthCheck() {
+    return this.request("/", {
+      method: "GET",
+    });
+  }
 
-  // Chat endpoints
-  chat: {
-    sendMessage: (message) => apiClient.post("/chat/message", message),
-    getHistory: () => apiClient.get("/chat/history"),
-    uploadDocument: (formData) =>
-      apiClient.post("/chat/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      }),
-  },
+  // Upload document (for future use)
+  async uploadDocument(file, userId = null) {
+    const formData = new FormData();
+    formData.append("document", file);
+    if (userId) {
+      formData.append("user_id", userId);
+    }
 
-  // Vision endpoints
-  vision: {
-    processFrame: (frameData) => apiClient.post("/vision/process", frameData),
-    getBlinkData: () => apiClient.get("/vision/blink-data"),
-  },
+    return this.request("/api/documents/upload", {
+      method: "POST",
+      headers: {}, // Remove Content-Type to let browser set it for FormData
+      body: formData,
+    });
+  }
 
-  // Medication endpoints
-  medications: {
-    getAll: () => apiClient.get("/medications"),
-    add: (medication) => apiClient.post("/medications", medication),
-    update: (id, medication) => apiClient.put(`/medications/${id}`, medication),
-    delete: (id) => apiClient.delete(`/medications/${id}`),
-    searchPharmacy: (medicationName) =>
-      apiClient.get(`/medications/search/${medicationName}`),
-  },
+  // Upload video (for future use)
+  async uploadVideo(videoBlob, audioTranscript, userId = null) {
+    const formData = new FormData();
+    formData.append("video_file", videoBlob);
+    formData.append("audio_transcript", audioTranscript);
+    if (userId) {
+      formData.append("user_id", userId);
+    }
 
-  // Tasks endpoints
-  tasks: {
-    getAll: () => apiClient.get("/tasks"),
-    update: (id, taskData) => apiClient.put(`/tasks/${id}`, taskData),
-  },
-};
+    return this.request("/api/video/analyze", {
+      method: "POST",
+      headers: {}, // Remove Content-Type to let browser set it for FormData
+      body: formData,
+    });
+  }
+}
 
+// Create and export a singleton instance
+const apiClient = new APIClient();
 export default apiClient;

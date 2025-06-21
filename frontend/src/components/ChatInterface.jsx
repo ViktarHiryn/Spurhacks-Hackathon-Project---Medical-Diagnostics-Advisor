@@ -17,7 +17,7 @@ import DocumentUploader from "./DocumentUploader";
 import { useMediaStream } from "../hooks/useMediaStream";
 import { useSTT } from "../hooks/useSTT";
 import { useUser } from "../context/UserContext";
-import { connectSocket, api } from "../api/client";
+import apiClient from "../api/client";
 
 const ChatInterface = () => {
   const [messages, setMessages] = useState([]);
@@ -57,18 +57,20 @@ const ChatInterface = () => {
     resetTranscript,
   } = useSTT();
 
-  // Initialize socket connection
+  // Initialize component (no socket needed for simple chat)
   useEffect(() => {
-    socketRef.current = connectSocket();
-
-    socketRef.current.on("ai_response", handleAIResponse);
-    socketRef.current.on("diagnosis_complete", handleDiagnosisComplete);
-    socketRef.current.on("vision_data", handleVisionData);
+    // Add initial welcome message
+    setMessages([
+      {
+        id: 1,
+        type: "ai",
+        content:
+          "Hello! I'm your AI medical assistant. How can I help you today? Please remember that I provide general health information only and you should always consult with healthcare professionals for medical advice.",
+        timestamp: new Date(),
+      },
+    ]);
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
       }
@@ -111,35 +113,16 @@ const ChatInterface = () => {
 
   const sendFrameForProcessing = async (frameData) => {
     try {
-      const response = await api.vision.processFrame({ frame: frameData });
-      setVisionData(response.data);
+      // TODO: Implement video frame processing with new backend
+      console.log("Frame processing not yet implemented");
+      // const response = await apiClient.uploadVideo(frameData, "", null);
+      // setVisionData(response);
     } catch (error) {
       console.error("Error processing frame:", error);
     }
   };
 
-  const handleAIResponse = (data) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        type: "ai",
-        content: data.message,
-        timestamp: new Date(),
-        confidence: data.confidence,
-      },
-    ]);
-    setIsProcessing(false);
-  };
-
-  const handleDiagnosisComplete = (data) => {
-    if (data.tasks && data.tasks.length > 0) {
-      data.tasks.forEach((task) => addTask(task));
-      setShowTasks(true);
-    }
-    setIsProcessing(false);
-  };
-
+  // Handlers for future video/document features
   const handleVisionData = (data) => {
     setVisionData(data);
   };
@@ -158,12 +141,45 @@ const ChatInterface = () => {
     setMessages((prev) => [...prev, userMessage]);
     setIsProcessing(true);
 
-    // Send to backend
-    socketRef.current.emit("user_message", {
-      message: currentMessage,
-      visionData: visionData,
-      audioData: null, // TODO: Add audio blob if needed
-    });
+    try {
+      // Send to FastAPI backend with Gemini integration
+      const response = await apiClient.sendChatMessage(currentMessage);
+
+      if (response.success) {
+        const aiMessage = {
+          id: Date.now() + 1,
+          type: "ai",
+          content: response.response,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+      } else {
+        // Handle error response
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: "ai",
+          content:
+            response.response ||
+            "I'm sorry, I'm experiencing technical difficulties. Please try again later.",
+          timestamp: new Date(),
+          isError: true,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content:
+          "I'm sorry, I'm having trouble connecting to the server. Please check your connection and try again.",
+        timestamp: new Date(),
+        isError: true,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsProcessing(false);
+    }
 
     setCurrentMessage("");
     resetTranscript();

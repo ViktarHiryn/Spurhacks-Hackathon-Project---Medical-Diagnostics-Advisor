@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
-import { api } from "../api/client";
+import apiClient from "../api/client";
 
 const MedicationTracker = () => {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -69,7 +69,9 @@ const MedicationTracker = () => {
 
     setSearchLoading(true);
     try {
-      const response = await api.medications.searchPharmacy(medicationName);
+      const response = await apiClient.medications.searchPharmacy(
+        medicationName
+      );
       setSearchResults(response.data.results || []);
     } catch (error) {
       console.error("Pharmacy search error:", error);

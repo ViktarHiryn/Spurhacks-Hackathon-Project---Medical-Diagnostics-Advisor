@@ -10,7 +10,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import { api } from "../api/client";
+import apiClient from "../api/client";
 
 const DocumentUploader = ({ onUpload, onClose }) => {
   const [dragActive, setDragActive] = useState(false);
@@ -116,7 +116,7 @@ const DocumentUploader = ({ onUpload, onClose }) => {
           }));
         }, 200);
 
-        const response = await api.chat.uploadDocument(formData);
+        const response = await apiClient.chat.uploadDocument(formData);
 
         clearInterval(progressInterval);
         setUploadProgress((prev) => ({ ...prev, [fileObj.id]: 100 }));

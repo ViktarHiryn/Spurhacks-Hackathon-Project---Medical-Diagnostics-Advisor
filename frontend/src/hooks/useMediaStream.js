@@ -17,9 +17,10 @@ export const useMediaStream = () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
           facingMode: "user",
+          frameRate: { ideal: 30, min: 15 },
         },
         audio: {
           echoCancellation: true,
@@ -35,10 +36,25 @@ export const useMediaStream = () => {
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+
+        try {
+          await videoRef.current.play();
+          console.log("✅ Video is playing successfully");
+        } catch (playError) {
+          console.warn("Video play failed, trying again:", playError);
+          setTimeout(async () => {
+            try {
+              await videoRef.current.play();
+              console.log("✅ Video playing after retry");
+            } catch (retryError) {
+              console.error("❌ Video play failed:", retryError);
+            }
+          }, 100);
+        }
       }
     } catch (err) {
       console.error("Error accessing media devices:", err);
-      setError(err.message);
+      setError(`Camera access denied: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -53,6 +69,10 @@ export const useMediaStream = () => {
       setStream(null);
       setIsVideoEnabled(false);
       setIsAudioEnabled(false);
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   }, []);
 
@@ -77,7 +97,7 @@ export const useMediaStream = () => {
   }, []);
 
   const captureFrame = useCallback(() => {
-    if (videoRef.current && stream) {
+    if (videoRef.current && videoRef.current.videoWidth > 0) {
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
 
@@ -85,10 +105,16 @@ export const useMediaStream = () => {
       canvas.height = videoRef.current.videoHeight;
 
       context.drawImage(videoRef.current, 0, 0);
-
       return canvas.toDataURL("image/jpeg", 0.8);
     }
     return null;
+  }, [stream]);
+
+  useEffect(() => {
+    if (stream && videoRef.current && !videoRef.current.srcObject) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(console.error);
+    }
   }, [stream]);
 
   useEffect(() => {

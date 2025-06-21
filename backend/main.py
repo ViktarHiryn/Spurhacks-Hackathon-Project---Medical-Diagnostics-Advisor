@@ -103,8 +103,6 @@ async def chat_with_ai(request: ChatRequest):
         
         # Add medical disclaimer to response
         ai_response = response.text
-        if "disclaimer" not in ai_response.lower():
-            ai_response += "\n\n⚠️ **Medical Disclaimer**: This AI assistant provides general health information only. Always consult with qualified healthcare professionals for medical advice, diagnosis, or treatment."
         
         return ChatResponse(
             response=ai_response,

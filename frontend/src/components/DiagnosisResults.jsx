@@ -1,0 +1,333 @@
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Stethoscope,
+  Calendar,
+  Clock,
+  Activity,
+  CheckCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Download,
+  FileText,
+  X,
+} from "lucide-react";
+
+const DiagnosisResults = ({ diagnoses, onClose, isOpen }) => {
+  const [expandedDiagnosis, setExpandedDiagnosis] = useState(null);
+
+  const getConfidenceColor = (confidence) => {
+    if (confidence >= 0.9) return "text-green-600";
+    if (confidence >= 0.7) return "text-amber-600";
+    return "text-red-600";
+  };
+
+  const getStatusColor = (followUpNeeded) => {
+    return followUpNeeded
+      ? "bg-amber-100 text-amber-800 border-amber-200"
+      : "bg-green-100 text-green-800 border-green-200";
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+        >
+          {/* Header */}
+          <div className="bg-white border-b border-neutral-200 p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Stethoscope className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-neutral-900">
+                    Extracted Medical History
+                  </h2>
+                  <p className="text-sm text-neutral-600">
+                    {diagnoses.length} diagnosis
+                    {diagnoses.length !== 1 ? "es" : ""} extracted from
+                    conversation
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-neutral-500" />
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+            {diagnoses.length === 0 ? (
+              <div className="text-center py-12">
+                <Stethoscope className="w-16 h-16 text-neutral-300 mx-auto mb-4" />
+                <h3 className="text-xl font-medium text-neutral-900 mb-2">
+                  No Diagnoses Found
+                </h3>
+                <p className="text-neutral-600">
+                  No clear medical diagnoses were identified in the current
+                  conversation.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {diagnoses.map((diagnosis, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    delay={index * 0.1}
+                    className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
+                  >
+                    {/* Diagnosis Header */}
+                    <div
+                      className="p-6 cursor-pointer hover:bg-neutral-50 transition-colors"
+                      onClick={() =>
+                        setExpandedDiagnosis(
+                          expandedDiagnosis === index ? null : index
+                        )
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="bg-primary-100 p-3 rounded-lg">
+                            <Stethoscope className="w-6 h-6 text-primary-600" />
+                          </div>
+
+                          <div>
+                            <h3 className="text-lg font-semibold text-neutral-900">
+                              {diagnosis.diagnosis}
+                            </h3>
+                            <div className="flex items-center space-x-4 mt-1 text-sm text-neutral-600">
+                              <div className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-1" />
+                                {diagnosis.date}
+                              </div>
+                              <div className="flex items-center">
+                                <Clock className="w-4 h-4 mr-1" />
+                                {diagnosis.duration}
+                              </div>
+                              <div className="flex items-center">
+                                <Activity className="w-4 h-4 mr-1" />
+                                {diagnosis.symptoms.length} symptom
+                                {diagnosis.symptoms.length !== 1 ? "s" : ""}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div
+                              className={`text-sm font-medium ${getConfidenceColor(
+                                diagnosis.confidence
+                              )}`}
+                            >
+                              {Math.round(diagnosis.confidence * 100)}%
+                              Confidence
+                            </div>
+                            <div
+                              className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border ${getStatusColor(
+                                diagnosis.followUpNeeded
+                              )}`}
+                            >
+                              {diagnosis.followUpNeeded ? (
+                                <>
+                                  <AlertCircle className="w-3 h-3 mr-1" />
+                                  Follow-up Needed
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Completed
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {expandedDiagnosis === index ? (
+                            <ChevronDown className="w-5 h-5 text-neutral-400" />
+                          ) : (
+                            <ChevronRight className="w-5 h-5 text-neutral-400" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Content */}
+                    {expandedDiagnosis === index && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-neutral-200"
+                      >
+                        <div className="p-6 space-y-6">
+                          {/* Symptoms */}
+                          <div>
+                            <h4 className="font-medium text-neutral-900 mb-3">
+                              Reported Symptoms
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {diagnosis.symptoms.map(
+                                (symptom, symptomIndex) => (
+                                  <span
+                                    key={symptomIndex}
+                                    className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full text-sm"
+                                  >
+                                    {symptom}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+
+                          {/* AI Recommendations */}
+                          <div>
+                            <h4 className="font-medium text-neutral-900 mb-3">
+                              AI Recommendations
+                            </h4>
+                            <ul className="space-y-2">
+                              {diagnosis.aiRecommendations.map(
+                                (recommendation, recIndex) => (
+                                  <li
+                                    key={recIndex}
+                                    className="flex items-start"
+                                  >
+                                    <CheckCircle className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                                    <span className="text-sm text-neutral-700">
+                                      {recommendation}
+                                    </span>
+                                  </li>
+                                )
+                              )}
+                            </ul>
+                          </div>
+
+                          {/* Analysis Data */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Vision Analysis */}
+                            <div>
+                              <h4 className="font-medium text-neutral-900 mb-3">
+                                Vision Analysis
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-600">
+                                    Blink Rate:
+                                  </span>
+                                  <span className="text-neutral-900">
+                                    {diagnosis.visionData.blinkRate}/min
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-600">
+                                    Eye Movement:
+                                  </span>
+                                  <span className="text-neutral-900">
+                                    {diagnosis.visionData.eyeMovement}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-600">
+                                    Expression:
+                                  </span>
+                                  <span className="text-neutral-900">
+                                    {diagnosis.visionData.facialExpression}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Voice Analysis */}
+                            <div>
+                              <h4 className="font-medium text-neutral-900 mb-3">
+                                Voice Analysis
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-600">
+                                    Tone:
+                                  </span>
+                                  <span className="text-neutral-900">
+                                    {diagnosis.voiceAnalysis.tone}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-600">
+                                    Pace:
+                                  </span>
+                                  <span className="text-neutral-900">
+                                    {diagnosis.voiceAnalysis.pace}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-neutral-600">
+                                    Clarity:
+                                  </span>
+                                  <span className="text-neutral-900">
+                                    {diagnosis.voiceAnalysis.clarity}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Documents and Actions */}
+                          <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
+                            <div className="flex items-center space-x-4">
+                              <div className="flex items-center text-sm text-neutral-600">
+                                <FileText className="w-4 h-4 mr-1" />
+                                {diagnosis.documents} document
+                                {diagnosis.documents !== 1 ? "s" : ""}
+                              </div>
+                              <div className="text-sm text-neutral-600">
+                                {diagnosis.tasksGenerated} task
+                                {diagnosis.tasksGenerated !== 1 ? "s" : ""}{" "}
+                                generated
+                              </div>
+                            </div>
+
+                            <div className="flex space-x-2">
+                              <button className="btn-secondary text-sm flex items-center space-x-1">
+                                <Download className="w-4 h-4" />
+                                <span>Export</span>
+                              </button>
+                              <button className="btn-primary text-sm flex items-center space-x-1">
+                                <Eye className="w-4 h-4" />
+                                <span>View Details</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+export default DiagnosisResults;

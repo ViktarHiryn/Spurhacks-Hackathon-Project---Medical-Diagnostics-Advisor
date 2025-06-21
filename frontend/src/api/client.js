@@ -79,6 +79,17 @@ class APIClient {
     }
   }
 
+  // Analyze chat history to extract diagnoses
+  async analyzeChatHistory(messages, userId = null) {
+    return this.request("/api/chat/analyze-history", {
+      method: "POST",
+      body: JSON.stringify({
+        messages: messages,
+        user_id: userId,
+      }),
+    });
+  }
+
   // Upload document (for future use)
   async uploadDocument(file, userId = null) {
     const formData = new FormData();

@@ -137,7 +137,7 @@ export const useMediaStream = () => {
       // Create MediaRecorder with optimized settings
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType: "video/webm;codecs=vp9,opus",
-        videoBitsPerSecond: 2500000, // 2.5 Mbps for good quality
+        videoBitsPerSecond: 250000, // 2.5 Mbps for good quality
         audioBitsPerSecond: 128000, // 128 kbps for audio
       });
 

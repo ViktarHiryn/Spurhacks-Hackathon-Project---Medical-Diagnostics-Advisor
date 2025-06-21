@@ -13,10 +13,12 @@ import {
   Play,
   Square,
   CheckCircle,
+  History,
 } from "lucide-react";
 import Avatar from "./Avatar";
 import TaskList from "./TaskList";
 import DocumentUploader from "./DocumentUploader";
+import DiagnosisResults from "./DiagnosisResults";
 import { useMediaStream } from "../hooks/useMediaStream";
 import { useSTT } from "../hooks/useSTT";
 import { useUser } from "../context/UserContext";
@@ -30,6 +32,9 @@ const ChatInterface = () => {
   const [showTasks, setShowTasks] = useState(false);
   const [visionData, setVisionData] = useState(null);
   const [isAnalyzingVideo, setIsAnalyzingVideo] = useState(false);
+  const [isAnalyzingHistory, setIsAnalyzingHistory] = useState(false);
+  const [diagnosisResults, setDiagnosisResults] = useState([]);
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
 
   const messagesEndRef = useRef(null);
 
@@ -227,6 +232,43 @@ const ChatInterface = () => {
   const handleDocumentUpload = (file) => {
     console.log("Document uploaded:", file);
     // TODO: Implement document processing
+  };
+
+  const handleAnalyzeHistory = async () => {
+    if (messages.length < 2) {
+      alert(
+        "Not enough conversation history to analyze. Please continue chatting with the AI doctor."
+      );
+      return;
+    }
+
+    setIsAnalyzingHistory(true);
+    try {
+      // Format messages for API
+      const formattedMessages = messages.map((message) => ({
+        type: message.type,
+        content: message.content,
+        timestamp: message.timestamp.toISOString(),
+        isVideo: message.isVideo || false,
+        isVideoAnalysis: message.isVideoAnalysis || false,
+      }));
+
+      const response = await apiClient.analyzeChatHistory(formattedMessages);
+
+      if (response.success) {
+        setDiagnosisResults(response.diagnoses);
+        setShowDiagnosis(true);
+        console.log("Extracted diagnoses:", response.diagnoses);
+      } else {
+        console.error("History analysis failed:", response.error);
+        alert(`Failed to analyze chat history: ${response.error}`);
+      }
+    } catch (error) {
+      console.error("Error analyzing history:", error);
+      alert(`Error analyzing chat history: ${error.message}`);
+    } finally {
+      setIsAnalyzingHistory(false);
+    }
   };
 
   return (
@@ -509,6 +551,34 @@ const ChatInterface = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* History Analysis Button */}
+        {messages.length > 1 && (
+          <div className="mt-4 text-center">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleAnalyzeHistory}
+              disabled={isAnalyzingHistory || isProcessing || isAnalyzingVideo}
+              className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+            >
+              {isAnalyzingHistory ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <History className="w-5 h-5" />
+              )}
+              <span className="font-medium">
+                {isAnalyzingHistory
+                  ? "Analyzing Chat History..."
+                  : "Extract Medical History"}
+              </span>
+            </motion.button>
+            <p className="text-xs text-neutral-500 mt-2">
+              Analyze this conversation to extract structured medical diagnoses
+              and recommendations
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Task List */}
@@ -521,6 +591,13 @@ const ChatInterface = () => {
           />
         )}
       </AnimatePresence>
+
+      {/* Diagnosis Results Modal */}
+      <DiagnosisResults
+        diagnoses={diagnosisResults}
+        isOpen={showDiagnosis}
+        onClose={() => setShowDiagnosis(false)}
+      />
     </div>
   );
 };

@@ -379,8 +379,8 @@ const ChatInterface = () => {
                   : isSpeaking
                   ? "Speaking..."
                   : isListening
-                  ? "Listening..."
-                  : "Ready to help"}
+                    ? "Listening..."
+                    : "Ready to help"}
               </p>
             </div>
           </div>
@@ -518,22 +518,20 @@ const ChatInterface = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className={`flex ${
-                message.type === "user" ? "justify-end" : "justify-start"
-              }`}
+              className={`flex ${message.type === "user" ? "justify-end" : "justify-start"
+                }`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                  message.type === "user"
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.type === "user"
                     ? message.isVideo
                       ? "bg-purple-600 text-white"
                       : "bg-primary-600 text-white"
                     : message.isError
-                    ? "bg-red-100 text-red-800 border border-red-200"
-                    : message.isVideoAnalysis
-                    ? "bg-blue-50 text-blue-900 border border-blue-200"
-                    : "bg-neutral-100 text-neutral-800"
-                }`}
+                      ? "bg-red-100 text-red-800 border border-red-200"
+                      : message.isVideoAnalysis
+                        ? "bg-blue-50 text-blue-900 border border-blue-200"
+                        : "bg-neutral-100 text-neutral-800"
+                  }`}
               >
                 {message.isVideo && (
                   <div className="flex items-center space-x-2 mb-1">
@@ -590,13 +588,11 @@ const ChatInterface = () => {
             whileTap={{ scale: 0.95 }}
             onClick={isVideoEnabled ? stopCamera : startCamera}
             disabled={videoLoading || isRecording}
-            className={`p-3 rounded-xl transition-colors ${
-              isVideoEnabled
+            className={`p-3 rounded-xl transition-colors ${isVideoEnabled
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-            } ${
-              videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
-            }`}
+              } ${videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
+              }`}
           >
             {videoLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -613,11 +609,10 @@ const ChatInterface = () => {
             whileTap={{ scale: 0.95 }}
             onClick={toggleAudio}
             disabled={!isVideoEnabled}
-            className={`p-3 rounded-xl transition-colors ${
-              isAudioEnabled && isVideoEnabled
+            className={`p-3 rounded-xl transition-colors ${isAudioEnabled && isVideoEnabled
                 ? "bg-green-600 text-white hover:bg-green-700"
                 : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-            } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
+              } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {isAudioEnabled && isVideoEnabled ? (
               <Mic className="w-5 h-5" />
@@ -632,7 +627,13 @@ const ChatInterface = () => {
               type="text"
               value={currentMessage}
               onChange={(e) => setCurrentMessage(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              onKeyUp={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault(); // prevents accidental form submissions
+                  sendMessage();
+                  setCurrentMessage(""); // clear input after sending
+                }
+              }}
               placeholder="Type your message..."
               disabled={isProcessing || isAnalyzingVideo || isRecording}
               className="w-full px-4 py-3 pr-12 border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"

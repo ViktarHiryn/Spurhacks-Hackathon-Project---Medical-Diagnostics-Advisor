@@ -1,0 +1,66 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: "#E3F2FD",
+          100: "#BBDEFB",
+          200: "#90CAF9",
+          300: "#64B5F6",
+          400: "#42A5F5",
+          500: "#1976D2",
+          600: "#1565C0",
+          700: "#0D47A1",
+          800: "#0D47A1",
+          900: "#0A3D91",
+        },
+        secondary: {
+          50: "#E1F5FE",
+          100: "#B3E5FC",
+          200: "#81D4FA",
+          300: "#4FC3F7",
+          400: "#29B6F6",
+          500: "#1976D2",
+          600: "#0288D1",
+          700: "#0277BD",
+          800: "#01579B",
+          900: "#01579B",
+        },
+        accent: {
+          50: "#FFF8E1",
+          100: "#FFECB3",
+          200: "#FFE082",
+          300: "#FFD54F",
+          400: "#FFCA28",
+          500: "#FFC107",
+          600: "#FFB300",
+          700: "#FFA000",
+          800: "#FF8F00",
+          900: "#FF6F00",
+        },
+        neutral: {
+          50: "#FAFAFA",
+          100: "#F5F5F5",
+          200: "#EEEEEE",
+          300: "#E0E0E0",
+          400: "#BDBDBD",
+          500: "#9E9E9E",
+          600: "#757575",
+          700: "#616161",
+          800: "#424242",
+          900: "#212121",
+        },
+      },
+      fontFamily: {
+        sans: ["Inter", "system-ui", "sans-serif"],
+      },
+      animation: {
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "bounce-subtle": "bounce 1s infinite",
+      },
+    },
+  },
+  plugins: [require("@tailwindcss/forms")],
+};

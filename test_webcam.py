@@ -20,6 +20,7 @@ ffmpeg_cmd = [
     '-f', 'dshow',
     '-i', 'video=HP Truevision HD:audio=Microphone Array (2- Realtek High Definition Audio)',
     '-t', str(duration),
+    '-b:v', '500k',
     output_filename
 ]
 

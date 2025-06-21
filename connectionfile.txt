@@ -1,0 +1,1 @@
+mongodb+srv://muazzamwaheed:spurhacksatlas1@cluster0.nfmtaxz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0

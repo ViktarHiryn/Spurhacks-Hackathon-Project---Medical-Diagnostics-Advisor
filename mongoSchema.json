@@ -1,0 +1,10 @@
+{
+    "user_id": "user123",
+    "medication_name": "Amoxicillin",
+    "dosage": "500mg",
+    "frequency": "3 times a day",
+    "start_date": "2024-06-01",
+    "expiry_date": "2025-06-01",
+    "prescribing_doctor": "Dr. Jane Smith",
+    "notes": "Take after meals"
+  }

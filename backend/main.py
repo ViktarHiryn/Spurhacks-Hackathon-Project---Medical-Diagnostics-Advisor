@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
 import logging
 import tempfile
-import aiofiles
 import json
 
 # Load environment variables

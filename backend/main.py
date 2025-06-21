@@ -9,6 +9,9 @@ import logging
 import tempfile
 import aiofiles
 import json
+from motor.motor_asyncio import AsyncIOMotorClient
+from datetime import datetime
+import pymongo
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +59,24 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Gemini model: {e}")
     raise
+
+# MongoDB Configuration
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://your-username:your-password@cluster0.mongodb.net/?retryWrites=true&w=majority")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "vitai_medical")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "medical_history")
+
+# Initialize MongoDB client
+try:
+    mongodb_client = AsyncIOMotorClient(MONGODB_URL)
+    database = mongodb_client[DATABASE_NAME]
+    history_collection = database[COLLECTION_NAME]
+    logger.info("MongoDB connection initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize MongoDB: {e}")
+    # Don't raise here, allow app to start without MongoDB for now
+    mongodb_client = None
+    database = None
+    history_collection = None
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -272,6 +293,77 @@ async def analyze_video(
             success=False,
             error=str(e)
         )
+
+# Add diagnosis to history endpoint
+@app.post("/api/history/add")
+async def add_to_history(diagnosis: DiagnosisData):
+    """
+    Add a diagnosis to the medical history in MongoDB
+    """
+    try:
+        if not history_collection:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        
+        # Convert diagnosis to dict and add metadata
+        diagnosis_dict = diagnosis.dict()
+        diagnosis_dict["created_at"] = datetime.utcnow()
+        diagnosis_dict["updated_at"] = datetime.utcnow()
+        
+        # Insert into MongoDB
+        result = await history_collection.insert_one(diagnosis_dict)
+        
+        if result.inserted_id:
+            logger.info(f"Successfully added diagnosis to history: {result.inserted_id}")
+            return {
+                "success": True,
+                "message": "Diagnosis added to medical history successfully",
+                "id": str(result.inserted_id)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save diagnosis to database")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding diagnosis to history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+# Get medical history endpoint
+@app.get("/api/history")
+async def get_medical_history(user_id: Optional[str] = None, limit: int = 50):
+    """
+    Get medical history from MongoDB
+    """
+    try:
+        if not history_collection:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        
+        # Build query
+        query = {}
+        if user_id:
+            query["user_id"] = user_id
+        
+        # Get documents sorted by creation date (newest first)
+        cursor = history_collection.find(query).sort("created_at", -1).limit(limit)
+        
+        # Convert to list
+        history_list = []
+        async for document in cursor:
+            # Convert ObjectId to string
+            document["_id"] = str(document["_id"])
+            history_list.append(document)
+        
+        return {
+            "success": True,
+            "history": history_list,
+            "count": len(history_list)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving medical history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # Chat history analysis endpoint
 @app.post("/api/chat/analyze-history", response_model=ChatHistoryResponse)

@@ -129,7 +129,7 @@ const HistoryView = () => {
     const matchesFilter =
       filterType === "all" ||
       (filterType === "follow-up" && session.followUpNeeded) ||
-      (filterType === "completed" && session.status === "completed");
+      (filterType === "completed" && !session.followUpNeeded);
 
     return matchesSearch && matchesFilter;
   });
@@ -168,12 +168,12 @@ const HistoryView = () => {
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-4 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <div className="flex items-center space-x-4">
-              <div className="relative">
+              <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-400 w-4 h-4" />
                 <input
                   type="text"
                   placeholder="Search symptoms or diagnosis..."
-                  className="pl-10 pr-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />

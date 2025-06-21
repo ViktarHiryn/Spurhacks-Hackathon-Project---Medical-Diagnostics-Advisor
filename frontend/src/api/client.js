@@ -58,6 +58,27 @@ class APIClient {
     });
   }
 
+  // Analyze video with Gemini
+  async analyzeVideo(formData) {
+    const url = `${this.baseURL}/api/video/analyze`;
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData, // FormData handles its own Content-Type
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Video analysis failed:", error);
+      throw error;
+    }
+  }
+
   // Upload document (for future use)
   async uploadDocument(file, userId = null) {
     const formData = new FormData();

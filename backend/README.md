@@ -102,7 +102,7 @@ If your frontend runs on a different port, update the `allow_origins` list in `m
 
 ## Features
 
-- Medical AI chat with Gemini 1.5 Flash
+- Medical AI chat with Gemini 2.5 Flash
 - CORS enabled for frontend integration
 - Medical disclaimers automatically added
 - Error handling and logging

@@ -17,6 +17,7 @@ import {
   Activity,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
+import apiClient from "../api/client";
 
 const HistoryView = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -28,94 +29,18 @@ const HistoryView = () => {
 
   // Sample medical history data for demo
   useEffect(() => {
-    const sampleSessions = [
-      {
-        id: 1,
-        date: new Date("2024-01-15T10:30:00"),
-        duration: "12 minutes",
-        symptoms: ["Headache", "Fatigue", "Dizziness"],
-        diagnosis: "Tension Headache",
-        confidence: 0.85,
-        aiRecommendations: [
-          "Get adequate rest (7-8 hours of sleep)",
-          "Stay hydrated - drink at least 8 glasses of water daily",
-          "Apply cold compress to forehead for 15-20 minutes",
-          "Consider over-the-counter pain relief if needed",
-        ],
-        visionData: {
-          blinkRate: 18,
-          eyeMovement: "Normal",
-          facialExpression: "Mild discomfort",
-        },
-        voiceAnalysis: {
-          tone: "Slightly strained",
-          pace: "Normal",
-          clarity: "Clear",
-        },
-        followUpNeeded: true,
-        status: "completed",
-        documents: ["symptoms_description.txt"],
-        tasksGenerated: 4,
-      },
-      {
-        id: 2,
-        date: new Date("2024-01-22T14:15:00"),
-        duration: "8 minutes",
-        symptoms: ["Sore throat", "Mild cough", "Runny nose"],
-        diagnosis: "Common Cold",
-        confidence: 0.92,
-        aiRecommendations: [
-          "Rest and stay hydrated",
-          "Use throat lozenges for sore throat",
-          "Consider warm salt water gargle",
-          "Monitor symptoms for 3-5 days",
-        ],
-        visionData: {
-          blinkRate: 22,
-          eyeMovement: "Slightly watery eyes",
-          facialExpression: "Mild congestion signs",
-        },
-        voiceAnalysis: {
-          tone: "Hoarse",
-          pace: "Slightly slower",
-          clarity: "Somewhat nasal",
-        },
-        followUpNeeded: false,
-        status: "completed",
-        documents: [],
-        tasksGenerated: 3,
-      },
-      {
-        id: 3,
-        date: new Date("2024-01-28T16:45:00"),
-        duration: "15 minutes",
-        symptoms: ["Back pain", "Muscle stiffness", "Limited mobility"],
-        diagnosis: "Lower Back Strain",
-        confidence: 0.78,
-        aiRecommendations: [
-          "Apply ice for first 24-48 hours, then heat",
-          "Gentle stretching exercises",
-          "Avoid heavy lifting",
-          "Consider seeing a physical therapist",
-        ],
-        visionData: {
-          blinkRate: 16,
-          eyeMovement: "Normal",
-          facialExpression: "Discomfort when moving",
-        },
-        voiceAnalysis: {
-          tone: "Strained during movement descriptions",
-          pace: "Cautious",
-          clarity: "Clear",
-        },
-        followUpNeeded: true,
-        status: "completed",
-        documents: ["back_pain_assessment.pdf"],
-        tasksGenerated: 5,
-      },
-    ];
-
-    setSessions(sampleSessions);
+    const fetchHistory = async () => {
+      try {
+        const response = await apiClient.getHistory();
+        // Extract the history array from the API response
+        const history = response.history || [];
+        setSessions(history);
+      } catch (error) {
+        console.error("Failed to fetch history:", error);
+        setSessions([]); // Set empty array on error
+      }
+    };
+    fetchHistory();
   }, []);
 
   const filteredSessions = sessions.filter((session) => {
@@ -244,7 +169,7 @@ const HistoryView = () => {
                         <div className="flex items-center space-x-4 mt-1 text-sm text-neutral-600">
                           <div className="flex items-center">
                             <Calendar className="w-4 h-4 mr-1" />
-                            {session.date.toLocaleDateString()}
+                            {session.date}
                           </div>
                           <div className="flex items-center">
                             <Clock className="w-4 h-4 mr-1" />
@@ -252,8 +177,8 @@ const HistoryView = () => {
                           </div>
                           <div className="flex items-center">
                             <Activity className="w-4 h-4 mr-1" />
-                            {session.symptoms.length} symptom
-                            {session.symptoms.length !== 1 ? "s" : ""}
+                            {session.symptoms?.length || 0} symptom
+                            {(session.symptoms?.length || 0) !== 1 ? "s" : ""}
                           </div>
                         </div>
                       </div>
@@ -311,7 +236,7 @@ const HistoryView = () => {
                           Reported Symptoms
                         </h4>
                         <div className="flex flex-wrap gap-2">
-                          {session.symptoms.map((symptom, index) => (
+                          {(session.symptoms || []).map((symptom, index) => (
                             <span
                               key={index}
                               className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full text-sm"
@@ -328,7 +253,7 @@ const HistoryView = () => {
                           AI Recommendations
                         </h4>
                         <ul className="space-y-2">
-                          {session.aiRecommendations.map(
+                          {(session.aiRecommendations || []).map(
                             (recommendation, index) => (
                               <li key={index} className="flex items-start">
                                 <CheckCircle className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
@@ -354,7 +279,7 @@ const HistoryView = () => {
                                 Blink Rate:
                               </span>
                               <span className="text-neutral-900">
-                                {session.visionData.blinkRate}/min
+                                {session.visionData?.blinkRate || "N/A"}/min
                               </span>
                             </div>
                             <div className="flex justify-between">
@@ -362,7 +287,7 @@ const HistoryView = () => {
                                 Eye Movement:
                               </span>
                               <span className="text-neutral-900">
-                                {session.visionData.eyeMovement}
+                                {session.visionData?.eyeMovement || "N/A"}
                               </span>
                             </div>
                             <div className="flex justify-between">
@@ -370,7 +295,7 @@ const HistoryView = () => {
                                 Expression:
                               </span>
                               <span className="text-neutral-900">
-                                {session.visionData.facialExpression}
+                                {session.visionData?.facialExpression || "N/A"}
                               </span>
                             </div>
                           </div>
@@ -385,19 +310,19 @@ const HistoryView = () => {
                             <div className="flex justify-between">
                               <span className="text-neutral-600">Tone:</span>
                               <span className="text-neutral-900">
-                                {session.voiceAnalysis.tone}
+                                {session.voiceAnalysis?.tone || "N/A"}
                               </span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-neutral-600">Pace:</span>
                               <span className="text-neutral-900">
-                                {session.voiceAnalysis.pace}
+                                {session.voiceAnalysis?.pace || "N/A"}
                               </span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-neutral-600">Clarity:</span>
                               <span className="text-neutral-900">
-                                {session.voiceAnalysis.clarity}
+                                {session.voiceAnalysis?.clarity || "N/A"}
                               </span>
                             </div>
                           </div>
@@ -405,21 +330,7 @@ const HistoryView = () => {
                       </div>
 
                       {/* Documents and Actions */}
-                      <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
-                        <div className="flex items-center space-x-4">
-                          {session.documents.length > 0 && (
-                            <div className="flex items-center text-sm text-neutral-600">
-                              <FileText className="w-4 h-4 mr-1" />
-                              {session.documents.length} document
-                              {session.documents.length !== 1 ? "s" : ""}
-                            </div>
-                          )}
-                          <div className="text-sm text-neutral-600">
-                            {session.tasksGenerated} task
-                            {session.tasksGenerated !== 1 ? "s" : ""} generated
-                          </div>
-                        </div>
-
+                      <div className="flex items-center justify-end pt-4 border-t border-neutral-200">
                         <div className="flex space-x-2">
                           <button className="btn-secondary text-sm flex items-center space-x-1">
                             <Download className="w-4 h-4" />

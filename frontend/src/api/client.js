@@ -112,6 +112,8 @@ class APIClient {
     return this.request(`/api/history/${documentId}`, {
       method: "DELETE",
     });
+  }
+
   // Upload document (for future use)
   async uploadDocument(file, userId = null) {
     const formData = new FormData();

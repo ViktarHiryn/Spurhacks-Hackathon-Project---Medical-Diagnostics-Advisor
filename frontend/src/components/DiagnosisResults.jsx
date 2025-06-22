@@ -88,7 +88,8 @@ const DiagnosisResults = ({ diagnoses, onClose, isOpen }) => {
 
   const handleAddToHistory = async (diagnosis) => {
     try {
-      await apiClient.post("/api/history/add", diagnosis);
+      console.log("asdsadasdads", diagnosis);
+      await apiClient.addDiagnosis(diagnosis);
       alert("Diagnosis added to medical history successfully!");
     } catch (error) {
       console.error("Error adding to history:", error);

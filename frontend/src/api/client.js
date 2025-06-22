@@ -90,6 +90,28 @@ class APIClient {
     });
   }
 
+  // Analyze chat history to extract diagnoses
+  async addDiagnosis(diagnosis) {
+    console.log("in addDiagnosis", diagnosis);
+    return this.request("/api/history/add", {
+      method: "POST",
+      body: JSON.stringify({
+        diagnosis: diagnosis,
+      }),
+    });
+  }
+
+  async getHistory() {
+    return this.request("/api/history", {
+      method: "GET",
+    });
+  }
+
+  // Delete a medical history entry
+  async deleteHistory(documentId) {
+    return this.request(`/api/history/${documentId}`, {
+      method: "DELETE",
+    });
   // Upload document (for future use)
   async uploadDocument(file, userId = null) {
     const formData = new FormData();

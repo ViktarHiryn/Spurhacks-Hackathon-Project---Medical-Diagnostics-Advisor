@@ -289,16 +289,11 @@ const ChatInterface = () => {
     }
 
     await startListening();
-    if (!isVideoEnabled) {
-      await startCamera();
-    }
   };
 
   const handleStopListening = () => {
     stopListening();
-    if (transcript) {
-      sendMessage();
-    }
+    // Don't auto-send, let user review the transcript first
   };
 
   const toggleVoice = () => {
@@ -353,7 +348,7 @@ const ChatInterface = () => {
         isVideo: message.isVideo || false,
         isVideoAnalysis: message.isVideoAnalysis || false,
       }));
-
+      console.log(formattedMessages);
       const response = await apiClient.analyzeChatHistory(formattedMessages);
 
       if (response.success) {
@@ -396,8 +391,8 @@ const ChatInterface = () => {
                   : isSpeaking
                   ? "Speaking..."
                   : isListening
-                    ? "Listening..."
-                    : "Ready to help"}
+                  ? "Listening..."
+                  : "Ready to help"}
               </p>
             </div>
           </div>
@@ -535,20 +530,22 @@ const ChatInterface = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className={`flex ${message.type === "user" ? "justify-end" : "justify-start"
-                }`}
+              className={`flex ${
+                message.type === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.type === "user"
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  message.type === "user"
                     ? message.isVideo
                       ? "bg-purple-600 text-white"
                       : "bg-primary-600 text-white"
                     : message.isError
-                      ? "bg-red-100 text-red-800 border border-red-200"
-                      : message.isVideoAnalysis
-                        ? "bg-blue-50 text-blue-900 border border-blue-200"
-                        : "bg-neutral-100 text-neutral-800"
-                  }`}
+                    ? "bg-red-100 text-red-800 border border-red-200"
+                    : message.isVideoAnalysis
+                    ? "bg-blue-50 text-blue-900 border border-blue-200"
+                    : "bg-neutral-100 text-neutral-800"
+                }`}
               >
                 {message.isVideo && (
                   <div className="flex items-center space-x-2 mb-1">
@@ -605,11 +602,13 @@ const ChatInterface = () => {
             whileTap={{ scale: 0.95 }}
             onClick={isVideoEnabled ? stopCamera : startCamera}
             disabled={videoLoading || isRecording}
-            className={`p-3 rounded-xl transition-colors ${isVideoEnabled
+            className={`p-3 rounded-xl transition-colors ${
+              isVideoEnabled
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-              } ${videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
-              }`}
+            } ${
+              videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
+            }`}
           >
             {videoLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -620,21 +619,73 @@ const ChatInterface = () => {
             )}
           </motion.button>
 
-          {/* Audio Toggle */}
+          {/* Smart Microphone Button - Speech-to-Text when video off, Video Audio when video on */}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={toggleAudio}
-            disabled={!isVideoEnabled}
-            className={`p-3 rounded-xl transition-colors ${isAudioEnabled && isVideoEnabled
-                ? "bg-green-600 text-white hover:bg-green-700"
-                : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-              } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            onClick={() => {
+              if (isVideoEnabled) {
+                // Video mode: toggle audio for recording
+                toggleAudio();
+              } else {
+                // Speech-to-text mode
+                if (isListening) {
+                  handleStopListening();
+                } else {
+                  handleStartListening();
+                }
+              }
+            }}
+            disabled={
+              isVideoEnabled
+                ? false // Always enabled in video mode
+                : !sttSupported ||
+                  isProcessing ||
+                  isAnalyzingVideo ||
+                  isRecording // STT requirements when video off
+            }
+            className={`p-3 rounded-xl transition-colors ${
+              isVideoEnabled
+                ? // Video mode styling
+                  isAudioEnabled
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
+                : // Speech-to-text mode styling
+                isListening
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "bg-green-600 text-white hover:bg-green-700"
+            } ${
+              isVideoEnabled
+                ? "" // No disabled state in video mode
+                : !sttSupported ||
+                  isProcessing ||
+                  isAnalyzingVideo ||
+                  isRecording
+                ? "opacity-50 cursor-not-allowed"
+                : ""
+            }`}
+            title={
+              isVideoEnabled
+                ? isAudioEnabled
+                  ? "Video Audio On"
+                  : "Video Audio Off"
+                : isListening
+                ? "Stop Speech-to-Text"
+                : "Start Speech-to-Text"
+            }
           >
-            {isAudioEnabled && isVideoEnabled ? (
-              <Mic className="w-5 h-5" />
-            ) : (
+            {isVideoEnabled ? (
+              // Video mode: show based on audio state
+              isAudioEnabled ? (
+                <Mic className="w-5 h-5" />
+              ) : (
+                <MicOff className="w-5 h-5" />
+              )
+            ) : // Speech-to-text mode: show based on listening state
+            isListening ? (
               <MicOff className="w-5 h-5" />
+            ) : (
+              <Mic className="w-5 h-5" />
             )}
           </motion.button>
 

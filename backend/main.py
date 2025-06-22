@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
 import logging
 import tempfile
-import aiofiles
 import json
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
@@ -22,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(title="Medical AI Chat Backend", version="1.0.0")
+
+#connect to mongoDB
+
 
 # Configure CORS
 app.add_middleware(

@@ -10,6 +10,8 @@ import tempfile
 import json
 from datetime import datetime
 from pymongo import MongoClient
+from bson import ObjectId
+from bson.errors import InvalidId
 import certifi
 
 # Load environment variables
@@ -304,6 +306,43 @@ async def analyze_video(
             success=False,
             error=str(e)
         )
+
+class DeleteDocumentRequest(BaseModel):
+    document_id: str
+
+@app.delete("/api/history/{document_id}")
+def delete_history_entry(document_id: str):
+    """
+    Delete a medical history entry from MongoDB
+    """
+    try:
+        if history_collection is None:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        
+        # Validate ObjectId format
+        try:
+            object_id = ObjectId(document_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid document ID format")
+        
+        # Delete the document
+        result = history_collection.delete_one({"_id": object_id})
+        
+        if result.deleted_count == 1:
+            logger.info(f"Successfully deleted document: {document_id}")
+            return {
+                "success": True,
+                "message": "Medical history entry deleted successfully",
+                "deleted_id": document_id
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Document not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # Add diagnosis to history endpoint
 @app.post("/api/history/add")

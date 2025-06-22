@@ -15,7 +15,7 @@ import {
   AlertCircle,
   CheckCircle,
   Activity,
-  Trash2
+  Trash2,
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import apiClient from "../api/client";
@@ -55,11 +55,20 @@ const HistoryView = () => {
   };
 
   const handleDelete = async (sessionId) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this medical history entry?"
+      )
+    ) {
+      return;
+    }
+
     try {
       await apiClient.deleteHistory(sessionId);
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      setSessions((prev) => prev.filter((s) => s._id !== sessionId));
     } catch (error) {
       console.error("Failed to delete session:", error);
+      alert("Failed to delete medical history entry. Please try again.");
     }
   };
 
@@ -156,24 +165,24 @@ const HistoryView = () => {
             </div>
           ) : (
             filteredSessions.map((session) => {
-              const isExpanded = expandedSessions.has(session.id);
+              const isExpanded = expandedSessions.has(session._id);
               return (
                 <motion.div
-                  key={session.id}
+                  key={session._id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
                 >
                   <div
                     className="p-6 cursor-pointer hover:bg-neutral-50 transition-colors"
-                    onClick={() => toggleSession(session.id)}
+                    onClick={() => toggleSession(session._id)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
-                      <button
+                        <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDelete(session.id);
+                            handleDelete(session._id);
                           }}
                           className="text-red-600 hover:text-red-800"
                         >
@@ -205,10 +214,18 @@ const HistoryView = () => {
                       </div>
                       <div className="flex items-center space-x-4">
                         <div className="text-right">
-                          <div className={`text-sm font-medium ${getConfidenceColor(session.confidence)}`}>
+                          <div
+                            className={`text-sm font-medium ${getConfidenceColor(
+                              session.confidence
+                            )}`}
+                          >
                             {Math.round(session.confidence * 100)}% Confidence
                           </div>
-                          <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border ${getStatusColor(session.status)}`}>
+                          <div
+                            className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border ${getStatusColor(
+                              session.status
+                            )}`}
+                          >
                             {session.followUpNeeded ? (
                               <>
                                 <AlertCircle className="w-3 h-3 mr-1" />
@@ -260,14 +277,16 @@ const HistoryView = () => {
                             AI Recommendations
                           </h4>
                           <ul className="space-y-2">
-                            {(session.aiRecommendations || []).map((recommendation, index) => (
-                              <li key={index} className="flex items-start">
-                                <CheckCircle className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
-                                <span className="text-sm text-neutral-700">
-                                  {recommendation}
-                                </span>
-                              </li>
-                            ))}
+                            {(session.aiRecommendations || []).map(
+                              (recommendation, index) => (
+                                <li key={index} className="flex items-start">
+                                  <CheckCircle className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                                  <span className="text-sm text-neutral-700">
+                                    {recommendation}
+                                  </span>
+                                </li>
+                              )
+                            )}
                           </ul>
                         </div>
 
@@ -278,21 +297,28 @@ const HistoryView = () => {
                             </h4>
                             <div className="space-y-2 text-sm">
                               <div className="flex justify-between">
-                                <span className="text-neutral-600">Blink Rate:</span>
+                                <span className="text-neutral-600">
+                                  Blink Rate:
+                                </span>
                                 <span className="text-neutral-900">
                                   {session.visionData?.blinkRate || "N/A"}/min
                                 </span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-neutral-600">Eye Movement:</span>
+                                <span className="text-neutral-600">
+                                  Eye Movement:
+                                </span>
                                 <span className="text-neutral-900">
                                   {session.visionData?.eyeMovement || "N/A"}
                                 </span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-neutral-600">Expression:</span>
+                                <span className="text-neutral-600">
+                                  Expression:
+                                </span>
                                 <span className="text-neutral-900">
-                                  {session.visionData?.facialExpression || "N/A"}
+                                  {session.visionData?.facialExpression ||
+                                    "N/A"}
                                 </span>
                               </div>
                             </div>
@@ -315,7 +341,9 @@ const HistoryView = () => {
                                 </span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-neutral-600">Clarity:</span>
+                                <span className="text-neutral-600">
+                                  Clarity:
+                                </span>
                                 <span className="text-neutral-900">
                                   {session.voiceAnalysis?.clarity || "N/A"}
                                 </span>

@@ -107,6 +107,13 @@ class APIClient {
     });
   }
 
+  // Delete a medical history entry
+  async deleteHistory(documentId) {
+    return this.request(`/api/history/${documentId}`, {
+      method: "DELETE",
+    });
+  }
+
   // Upload video (for future use)
   async uploadVideo(videoBlob, audioTranscript, userId = null) {
     const formData = new FormData();

@@ -288,16 +288,11 @@ const ChatInterface = () => {
     }
 
     await startListening();
-    if (!isVideoEnabled) {
-      await startCamera();
-    }
   };
 
   const handleStopListening = () => {
     stopListening();
-    if (transcript) {
-      sendMessage();
-    }
+    // Don't auto-send, let user review the transcript first
   };
 
   const toggleVoice = () => {
@@ -607,22 +602,73 @@ const ChatInterface = () => {
             )}
           </motion.button>
 
-          {/* Audio Toggle */}
+          {/* Smart Microphone Button - Speech-to-Text when video off, Video Audio when video on */}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={toggleAudio}
-            disabled={!isVideoEnabled}
+            onClick={() => {
+              if (isVideoEnabled) {
+                // Video mode: toggle audio for recording
+                toggleAudio();
+              } else {
+                // Speech-to-text mode
+                if (isListening) {
+                  handleStopListening();
+                } else {
+                  handleStartListening();
+                }
+              }
+            }}
+            disabled={
+              isVideoEnabled
+                ? false // Always enabled in video mode
+                : !sttSupported ||
+                  isProcessing ||
+                  isAnalyzingVideo ||
+                  isRecording // STT requirements when video off
+            }
             className={`p-3 rounded-xl transition-colors ${
-              isAudioEnabled && isVideoEnabled
-                ? "bg-green-600 text-white hover:bg-green-700"
-                : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-            } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
+              isVideoEnabled
+                ? // Video mode styling
+                  isAudioEnabled
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
+                : // Speech-to-text mode styling
+                isListening
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "bg-green-600 text-white hover:bg-green-700"
+            } ${
+              isVideoEnabled
+                ? "" // No disabled state in video mode
+                : !sttSupported ||
+                  isProcessing ||
+                  isAnalyzingVideo ||
+                  isRecording
+                ? "opacity-50 cursor-not-allowed"
+                : ""
+            }`}
+            title={
+              isVideoEnabled
+                ? isAudioEnabled
+                  ? "Video Audio On"
+                  : "Video Audio Off"
+                : isListening
+                ? "Stop Speech-to-Text"
+                : "Start Speech-to-Text"
+            }
           >
-            {isAudioEnabled && isVideoEnabled ? (
-              <Mic className="w-5 h-5" />
-            ) : (
+            {isVideoEnabled ? (
+              // Video mode: show based on audio state
+              isAudioEnabled ? (
+                <Mic className="w-5 h-5" />
+              ) : (
+                <MicOff className="w-5 h-5" />
+              )
+            ) : // Speech-to-text mode: show based on listening state
+            isListening ? (
               <MicOff className="w-5 h-5" />
+            ) : (
+              <Mic className="w-5 h-5" />
             )}
           </motion.button>
 

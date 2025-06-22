@@ -399,79 +399,97 @@ async def analyze_chat_history(request: ChatHistoryRequest):
 
 # Document analysis endpoint
 @app.post("/api/document/analyze", response_model=ChatResponse)
-async def analyze_document(
-    document: UploadFile = File(...),
-    user_id: str = Form(default="default")
-):
+async def analyze_document(document: UploadFile = File(...), user_id: str = Form(default="default")):
+    """
+    Analyze uploaded document (e.g., PDF, DOCX) using Gemini API for health-related insights
+    """
     try:
-        logger.info(f"Received document analysis request. File: {document.filename}")
-
-        # Validate file type (optional: add more types as needed)
-        if not (
-            document.content_type.startswith("application/")
-            or document.content_type.startswith("image/")
-            or document.content_type == "text/plain"
-        ):
-            raise HTTPException(status_code=400, detail="Unsupported file type")
-
-        # Save file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(document.filename)[-1]) as temp_file:
-            content = await document.read()
-            temp_file.write(content)
+        logger.info(f"Received document analysis request. File: {document.filename}, Size: {document.size}")
+        
+        # Validate file type
+        if not document.content_type in ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
+            raise HTTPException(status_code=400, detail="File must be a PDF or DOCX document")
+        
+        # Check file size (limit to 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB in bytes
+        if document.size and document.size > max_size:
+            raise HTTPException(status_code=400, detail="Document file too large (max 10MB)")
+        
+        # Create temporary file to store the document
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            # Read document content and write to temp file
+            document_content = await document.read()
+            temp_file.write(document_content)
             temp_file_path = temp_file.name
-
+        
         try:
-            # Upload file to Gemini
+            # Upload document file to Gemini
             logger.info("Uploading document to Gemini API...")
-            gemini_file = genai.upload_file(temp_file_path)
-
-            # Wait for processing
+            document_file = genai.upload_file(temp_file_path)
+            
+            # Wait for processing to complete
+            logger.info("Waiting for document processing...")
             import time
-            while gemini_file.state.name == "PROCESSING":
+            while document_file.state.name == "PROCESSING":
                 time.sleep(2)
-                gemini_file = genai.get_file(gemini_file.name)
-
-            if gemini_file.state.name == "FAILED":
+                document_file = genai.get_file(document_file.name)
+            
+            if document_file.state.name == "FAILED":
                 raise HTTPException(status_code=500, detail="Document processing failed")
-
-            # Create prompt for Gemini
-            prompt = f"Please analyze this document for health-related information, symptoms, or medical concerns. Provide a detailed analysis."
-
-            # Generate analysis
+            
+            # Create the medical analysis prompt
+            medical_prompt = f"""
+            Please analyze this document from a medical/health perspective. Look for:
+            
+            1. **Medical History**: Any relevant past medical history, surgeries, or treatments
+            2. **Current Medications**: List of current medications and dosages
+            3. **Allergies**: Any known allergies or adverse reactions
+            4. **Symptoms**: Description of any current symptoms or health concerns
+            5. **Lifestyle Factors**: Information on diet, exercise, alcohol, tobacco use, etc.
+            
+            User's specific request: Extract health insights from this document.
+            
+            Important Guidelines:
+            - Provide observations but emphasize that this is NOT a medical diagnosis
+            - Recommend consulting healthcare professionals for any concerns
+            - Be thorough but avoid causing unnecessary alarm
+            - Focus on objective observations rather than definitive conclusions
+            - If you see concerning symptoms, advise seeking medical attention
+            
+            Please provide a structured analysis with your observations and recommendations.
+            """
+            
+            # Generate analysis using Gemini
             logger.info("Generating analysis with Gemini...")
-            response = model.generate_content([gemini_file, prompt])
-
+            response = model.generate_content([
+                document_file,
+                medical_prompt
+            ])
+            
             if not response.text:
                 raise HTTPException(status_code=500, detail="Failed to generate document analysis")
 
             logger.info("Document analysis completed successfully")
-
-            # Optionally: Save analysis to chat history for user
-            # (Assuming you have chat_histories dict and ChatMessage model)
-            now = __import__("datetime").datetime.utcnow().isoformat()
-            if "chat_histories" in globals():
-                chat_histories[user_id].append(ChatMessage(
-                    type="ai",
-                    content=f"[Document Analysis] {response.text}",
-                    timestamp=now,
-                ))
-
+            
             return ChatResponse(
-                response="Your document has been successfully processed and will be considered in future conversations.",
+                response=response.text,
                 success=True
             )
+            
         finally:
+            # Clean up temporary file
             try:
                 os.unlink(temp_file_path)
+                logger.info("Temporary file cleaned up")
             except Exception as cleanup_error:
                 logger.warning(f"Failed to clean up temp file: {cleanup_error}")
-
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in document analysis: {str(e)}")
         return ChatResponse(
-            response=f"I'm sorry, I encountered an error while analyzing your document: {str(e)}",
+            response=f"Error: {str(e)}",
             success=False,
             error=str(e)
         )

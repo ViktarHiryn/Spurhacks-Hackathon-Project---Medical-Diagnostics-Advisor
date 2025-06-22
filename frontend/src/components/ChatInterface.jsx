@@ -314,18 +314,23 @@ const ChatInterface = () => {
     }
   };
 
-  const handleDocumentUpload = async (file) => {
-    console.log("Document uploaded:", file);
-    // Send document to backend for processing
-    const result = await apiClient.uploadDocument(file, user?.id || "default");
-
+  const handleDocumentUpload = (file, summary) => {
+    // Optionally, add a user message for the upload
     setMessages((prev) => [
       ...prev,
       {
         id: Date.now(),
-        type: "ai",
-        content: result.response || "Your document has been successfully processed and will be considered in future conversations.",
+        type: "user",
+        content: `📄 Uploaded document: ${file.name}`,
         timestamp: new Date(),
+        isDocument: true,
+      },
+      {
+        id: Date.now() + 1,
+        type: "ai",
+        content: summary || "Your document has been successfully processed and will be considered in future conversations.",
+        timestamp: new Date(),
+        isDocumentAnalysis: true,
       },
     ]);
   };

@@ -123,11 +123,10 @@ const DocumentUploader = ({ onUpload, onClose }) => {
         );
 
         setAiMessage(
-          response.response ||
             "Your document has been successfully processed and will be considered in future conversations."
         );
 
-        if (onUpload) onUpload(fileObj.file);
+        if (onUpload) onUpload(fileObj.file, response.response); // response.response is the summary text
       } catch (error) {
         setFiles((prev) =>
           prev.map((f) =>

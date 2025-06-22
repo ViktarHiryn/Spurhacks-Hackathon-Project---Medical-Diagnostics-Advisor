@@ -31,34 +31,7 @@ const MedicationTracker = () => {
   useEffect(() => {
     if (medications.length === 0) {
       // Add some sample medications for demo
-      const sampleMeds = [
-        {
-          id: Date.now() + 1, // More unique ID
-          name: "Aspirin",
-          dosage: "81mg",
-          frequency: "Daily",
-          prescribedBy: "Dr. Smith",
-          startDate: new Date("2024-01-01"),
-          endDate: new Date("2024-12-31"),
-          expiryDate: new Date("2025-06-15"),
-          stock: 25,
-          notes: "Take with food",
-          isActive: true,
-        },
-        {
-          id: Date.now() + 2, // More unique ID
-          name: "Lisinopril",
-          dosage: "10mg",
-          frequency: "Daily",
-          prescribedBy: "Dr. Johnson",
-          startDate: new Date("2024-02-01"),
-          endDate: new Date("2024-12-31"),
-          expiryDate: new Date("2024-08-20"),
-          stock: 8,
-          notes: "Monitor blood pressure",
-          isActive: true,
-        },
-      ];
+      const sampleMeds = [];
 
       sampleMeds.forEach((med) => addMedication(med));
     }

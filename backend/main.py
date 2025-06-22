@@ -7,8 +7,12 @@ from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
 import logging
 import tempfile
-import aiofiles
 import json
+from datetime import datetime
+from pymongo import MongoClient
+from bson import ObjectId
+from bson.errors import InvalidId
+import certifi
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(title="Medical AI Chat Backend", version="1.0.0")
+
+#connect to mongoDB
+
 
 # Configure CORS
 app.add_middleware(
@@ -56,6 +63,32 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize Gemini model: {e}")
     raise
+
+# MongoDB Configuration
+MONGODB_URL = os.getenv("MONGODB_URL")
+DATABASE_NAME = os.getenv("DATABASE_NAME")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME")
+
+# Initialize MongoDB client
+try:
+    client = MongoClient(MONGODB_URL,tlsCAFile=certifi.where())
+    print("mongsadfafodb", client.admin.command('ping'))
+    database = client[DATABASE_NAME]
+    history_collection = database[COLLECTION_NAME]
+    database = client.get_database("sample_mflix")
+    movies = database.get_collection("movies")
+    # Query for a movie that has the title 'Back to the Future'
+    query = { "runtime": 14 }
+    movie = movies.find_one(query)
+    print(movie)
+    # client.close()
+    logger.info("MongoDB connection initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize MongoDB: {e}")
+    # Don't raise here, allow app to start without MongoDB for now
+    mongodb_client = None
+    database = None
+    history_collection = None
 
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
@@ -95,8 +128,9 @@ class DiagnosisData(BaseModel):
     aiRecommendations: List[str]
     visionData: Dict[str, Any]
     voiceAnalysis: Dict[str, Any]
-    documents: int
-    tasksGenerated: int
+
+class AddHistoryRequest(BaseModel):
+    diagnosis: DiagnosisData
 
 class ChatHistoryResponse(BaseModel):
     diagnoses: List[DiagnosisData]
@@ -273,6 +307,118 @@ async def analyze_video(
             error=str(e)
         )
 
+class DeleteDocumentRequest(BaseModel):
+    document_id: str
+
+@app.delete("/api/history/{document_id}")
+def delete_history_entry(document_id: str):
+    """
+    Delete a medical history entry from MongoDB
+    """
+    try:
+        if history_collection is None:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        
+        # Validate ObjectId format
+        try:
+            object_id = ObjectId(document_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="Invalid document ID format")
+        
+        # Delete the document
+        result = history_collection.delete_one({"_id": object_id})
+        
+        if result.deleted_count == 1:
+            logger.info(f"Successfully deleted document: {document_id}")
+            return {
+                "success": True,
+                "message": "Medical history entry deleted successfully",
+                "deleted_id": document_id
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Document not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+# Add diagnosis to history endpoint
+@app.post("/api/history/add")
+def add_to_history(request: AddHistoryRequest):
+    """
+    Add a diagnosis to the medical history in MongoDB
+    """
+    diagnosis = request.diagnosis
+    print("flippodpapsiidai", diagnosis)
+
+    try:
+        if history_collection is None:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        
+        # Convert diagnosis to dict and add metadata
+        diagnosis_dict = diagnosis.model_dump()
+        diagnosis_dict["created_at"] = datetime.now()
+        diagnosis_dict["updated_at"] = datetime.now()
+        print("diagnosis_dict", diagnosis_dict)
+        
+        # Insert into MongoDB
+        result = history_collection.insert_one(diagnosis_dict)
+        
+        if result.inserted_id:
+            logger.info(f"Successfully added diagnosis to history: {result.inserted_id}")
+            return {
+                "success": True,
+                "message": "Diagnosis added to medical history successfully",
+                "id": str(result.inserted_id)
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save diagnosis to database")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding diagnosis to history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+# Get medical history endpoint
+@app.get("/api/history")
+def get_medical_history(user_id: Optional[str] = None, limit: int = 50):
+    """
+    Get medical history from MongoDB
+    """
+    try:
+        if history_collection is None:
+            raise HTTPException(status_code=503, detail="Database connection not available")
+        
+        # Build query
+        query = {}
+        if user_id:
+            query["user_id"] = user_id
+        
+        # Get documents sorted by creation date (newest first)
+        cursor = history_collection.find(query).sort("created_at", -1).limit(limit)
+        
+        # Convert to list
+        history_list = []
+        for document in cursor:
+            # Convert ObjectId to string
+            document["_id"] = str(document["_id"])
+            history_list.append(document)
+        
+        return {
+            "success": True,
+            "history": history_list,
+            "count": len(history_list)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving medical history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 # Chat history analysis endpoint
 @app.post("/api/chat/analyze-history", response_model=ChatHistoryResponse)
 async def analyze_chat_history(request: ChatHistoryRequest):
@@ -280,6 +426,7 @@ async def analyze_chat_history(request: ChatHistoryRequest):
     Analyze chat history to extract medical diagnoses and create structured medical records
     """
     try:
+        print("asdsadasdads", request.messages)
         logger.info(f"Received chat history analysis request with {len(request.messages)} messages")
         
         if len(request.messages) < 2:
@@ -323,8 +470,6 @@ async def analyze_chat_history(request: ChatHistoryRequest):
                 "pace": "Description of pace", 
                 "clarity": "Description of clarity"
             }},
-            "documents": 1,
-            "tasksGenerated": 4
         }}
         
         Guidelines:
@@ -339,17 +484,20 @@ async def analyze_chat_history(request: ChatHistoryRequest):
         
         Return ONLY the JSON array, no other text or formatting.
         """
+        print("asdsadasdads", analysis_prompt)
         
         # Generate analysis using Gemini
         logger.info("Sending chat history to Gemini for analysis...")
         response = model.generate_content(analysis_prompt)
         
         if not response.text:
+            print("Empty response from Gemini API")
             logger.error("Empty response from Gemini API")
             raise HTTPException(status_code=500, detail="Failed to generate analysis")
         
         # Parse JSON response
         try:
+            print("asdsadasdads", response.text)
             # Clean the response text (remove any markdown formatting)
             json_text = response.text.strip()
             if json_text.startswith("```json"):

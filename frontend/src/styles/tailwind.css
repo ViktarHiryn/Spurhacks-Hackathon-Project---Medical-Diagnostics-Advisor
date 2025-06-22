@@ -39,3 +39,156 @@
     @apply bg-neutral-100 text-neutral-900 rounded-2xl rounded-bl-md px-4 py-2 max-w-xs mr-auto;
   }
 }
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom slider styles for voice settings */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e2e8f0;
+  height: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.slider::-webkit-slider-track {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e2e8f0;
+  height: 8px;
+  border-radius: 4px;
+  border: none;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #3b82f6;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: -6px; /* Center the thumb on the track */
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-track {
+  background: #e2e8f0;
+  height: 8px;
+  border-radius: 4px;
+  border: none;
+  outline: none;
+}
+
+.slider::-moz-range-thumb {
+  background: #3b82f6;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.slider::-moz-range-thumb:hover {
+  background: #2563eb;
+  transform: scale(1.1);
+}
+
+/* Firefox specific fixes */
+.slider::-moz-range-progress {
+  background: #3b82f6;
+  height: 8px;
+  border-radius: 4px;
+}
+
+/* Additional cross-browser support */
+.slider:focus {
+  outline: none;
+}
+
+.slider:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Custom button styles */
+.btn-primary {
+  @apply px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-neutral-200 text-neutral-700 rounded-lg hover:bg-neutral-300 transition-colors font-medium;
+}
+
+/* Animation classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-ring {
+  animation: pulseRing 2s infinite;
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* Medical themed gradients */
+.gradient-medical {
+  background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+}
+
+.gradient-health {
+  background: linear-gradient(135deg, #2e7d32 0%, #4caf50 100%);
+}
+
+.gradient-emergency {
+  background: linear-gradient(135deg, #c62828 0%, #f44336 100%);
+}

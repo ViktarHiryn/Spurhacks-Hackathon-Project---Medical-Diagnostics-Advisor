@@ -10,6 +10,7 @@ import tempfile
 import json
 from datetime import datetime
 from pymongo import MongoClient
+import certifi
 
 # Load environment variables
 load_dotenv()
@@ -68,7 +69,7 @@ COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 
 # Initialize MongoDB client
 try:
-    client = MongoClient(MONGODB_URL)
+    client = MongoClient(MONGODB_URL,tlsCAFile=certifi.where())
     print("mongsadfafodb", client.admin.command('ping'))
     database = client[DATABASE_NAME]
     history_collection = database[COLLECTION_NAME]

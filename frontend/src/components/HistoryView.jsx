@@ -15,6 +15,7 @@ import {
   AlertCircle,
   CheckCircle,
   Activity,
+  Trash2
 } from "lucide-react";
 import { useUser } from "../context/UserContext";
 import apiClient from "../api/client";
@@ -22,26 +23,45 @@ import apiClient from "../api/client";
 const HistoryView = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [expandedSession, setExpandedSession] = useState(null);
+  const [expandedSessions, setExpandedSessions] = useState(new Set());
   const [sessions, setSessions] = useState([]);
 
   const { medicalHistory } = useUser();
 
-  // Sample medical history data for demo
   useEffect(() => {
     const fetchHistory = async () => {
       try {
         const response = await apiClient.getHistory();
-        // Extract the history array from the API response
         const history = response.history || [];
         setSessions(history);
       } catch (error) {
         console.error("Failed to fetch history:", error);
-        setSessions([]); // Set empty array on error
+        setSessions([]);
       }
     };
     fetchHistory();
   }, []);
+
+  const toggleSession = (sessionId) => {
+    setExpandedSessions((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(sessionId)) {
+        updated.delete(sessionId);
+      } else {
+        updated.add(sessionId);
+      }
+      return updated;
+    });
+  };
+
+  const handleDelete = async (sessionId) => {
+    try {
+      await apiClient.deleteHistory(sessionId);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    } catch (error) {
+      console.error("Failed to delete session:", error);
+    }
+  };
 
   const filteredSessions = sessions.filter((session) => {
     const matchesSearch =
@@ -79,7 +99,6 @@ const HistoryView = () => {
   return (
     <div className="flex-1 bg-neutral-50 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-neutral-900 mb-2">
             Medical History
@@ -89,7 +108,6 @@ const HistoryView = () => {
           </p>
         </div>
 
-        {/* Filters and Search */}
         <div className="bg-white rounded-xl shadow-sm border border-neutral-200 p-4 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
             <div className="flex items-center space-x-4">
@@ -103,7 +121,6 @@ const HistoryView = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-
               <div className="flex items-center space-x-2">
                 <Filter className="w-4 h-4 text-neutral-500" />
                 <select
@@ -117,7 +134,6 @@ const HistoryView = () => {
                 </select>
               </div>
             </div>
-
             <div className="text-sm text-neutral-600">
               {filteredSessions.length} consultation
               {filteredSessions.length !== 1 ? "s" : ""} found
@@ -125,8 +141,7 @@ const HistoryView = () => {
           </div>
         </div>
 
-        {/* Sessions List */}
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
           {filteredSessions.length === 0 ? (
             <div className="text-center py-12">
               <Stethoscope className="w-16 h-16 text-neutral-300 mx-auto mb-4" />
@@ -140,213 +155,193 @@ const HistoryView = () => {
               </p>
             </div>
           ) : (
-            filteredSessions.map((session) => (
-              <motion.div
-                key={session.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
-              >
-                {/* Session Header */}
-                <div
-                  className="p-6 cursor-pointer hover:bg-neutral-50 transition-colors"
-                  onClick={() =>
-                    setExpandedSession(
-                      expandedSession === session.id ? null : session.id
-                    )
-                  }
+            filteredSessions.map((session) => {
+              const isExpanded = expandedSessions.has(session.id);
+              return (
+                <motion.div
+                  key={session.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white rounded-xl shadow-sm border border-neutral-200 overflow-hidden"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="bg-primary-100 p-3 rounded-lg">
-                        <Stethoscope className="w-6 h-6 text-primary-600" />
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-neutral-900">
-                          {session.diagnosis}
-                        </h3>
-                        <div className="flex items-center space-x-4 mt-1 text-sm text-neutral-600">
-                          <div className="flex items-center">
-                            <Calendar className="w-4 h-4 mr-1" />
-                            {session.date}
-                          </div>
-                          <div className="flex items-center">
-                            <Clock className="w-4 h-4 mr-1" />
-                            {session.duration}
-                          </div>
-                          <div className="flex items-center">
-                            <Activity className="w-4 h-4 mr-1" />
-                            {session.symptoms?.length || 0} symptom
-                            {(session.symptoms?.length || 0) !== 1 ? "s" : ""}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <div
-                          className={`text-sm font-medium ${getConfidenceColor(
-                            session.confidence
-                          )}`}
+                  <div
+                    className="p-6 cursor-pointer hover:bg-neutral-50 transition-colors"
+                    onClick={() => toggleSession(session.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                      <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(session.id);
+                          }}
+                          className="text-red-600 hover:text-red-800"
                         >
-                          {Math.round(session.confidence * 100)}% Confidence
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                        <div className="bg-primary-100 p-3 rounded-lg">
+                          <Stethoscope className="w-6 h-6 text-primary-600" />
                         </div>
-                        <div
-                          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border ${getStatusColor(
-                            session.status
-                          )}`}
-                        >
-                          {session.followUpNeeded ? (
-                            <>
-                              <AlertCircle className="w-3 h-3 mr-1" />
-                              Follow-up Needed
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Completed
-                            </>
-                          )}
+                        <div>
+                          <h3 className="text-lg font-semibold text-neutral-900">
+                            {session.diagnosis}
+                          </h3>
+                          <div className="flex items-center space-x-4 mt-1 text-sm text-neutral-600">
+                            <div className="flex items-center">
+                              <Calendar className="w-4 h-4 mr-1" />
+                              {session.date}
+                            </div>
+                            <div className="flex items-center">
+                              <Clock className="w-4 h-4 mr-1" />
+                              {session.duration}
+                            </div>
+                            <div className="flex items-center">
+                              <Activity className="w-4 h-4 mr-1" />
+                              {session.symptoms?.length || 0} symptom
+                              {(session.symptoms?.length || 0) !== 1 ? "s" : ""}
+                            </div>
+                          </div>
                         </div>
                       </div>
-
-                      {expandedSession === session.id ? (
-                        <ChevronDown className="w-5 h-5 text-neutral-400" />
-                      ) : (
-                        <ChevronRight className="w-5 h-5 text-neutral-400" />
-                      )}
+                      <div className="flex items-center space-x-4">
+                        <div className="text-right">
+                          <div className={`text-sm font-medium ${getConfidenceColor(session.confidence)}`}>
+                            {Math.round(session.confidence * 100)}% Confidence
+                          </div>
+                          <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border ${getStatusColor(session.status)}`}>
+                            {session.followUpNeeded ? (
+                              <>
+                                <AlertCircle className="w-3 h-3 mr-1" />
+                                Follow-up Needed
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Completed
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {isExpanded ? (
+                          <ChevronDown className="w-5 h-5 text-neutral-400" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-neutral-400" />
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Expanded Content */}
-                {expandedSession === session.id && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="border-t border-neutral-200"
-                  >
-                    <div className="p-6 space-y-6">
-                      {/* Symptoms */}
-                      <div>
-                        <h4 className="font-medium text-neutral-900 mb-3">
-                          Reported Symptoms
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {(session.symptoms || []).map((symptom, index) => (
-                            <span
-                              key={index}
-                              className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full text-sm"
-                            >
-                              {symptom}
-                            </span>
-                          ))}
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="border-t border-neutral-200"
+                    >
+                      <div className="p-6 space-y-6">
+                        <div>
+                          <h4 className="font-medium text-neutral-900 mb-3">
+                            Reported Symptoms
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {(session.symptoms || []).map((symptom, index) => (
+                              <span
+                                key={index}
+                                className="px-3 py-1 bg-neutral-100 text-neutral-700 rounded-full text-sm"
+                              >
+                                {symptom}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
 
-                      {/* AI Recommendations */}
-                      <div>
-                        <h4 className="font-medium text-neutral-900 mb-3">
-                          AI Recommendations
-                        </h4>
-                        <ul className="space-y-2">
-                          {(session.aiRecommendations || []).map(
-                            (recommendation, index) => (
+                        <div>
+                          <h4 className="font-medium text-neutral-900 mb-3">
+                            AI Recommendations
+                          </h4>
+                          <ul className="space-y-2">
+                            {(session.aiRecommendations || []).map((recommendation, index) => (
                               <li key={index} className="flex items-start">
                                 <CheckCircle className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
                                 <span className="text-sm text-neutral-700">
                                   {recommendation}
                                 </span>
                               </li>
-                            )
-                          )}
-                        </ul>
-                      </div>
+                            ))}
+                          </ul>
+                        </div>
 
-                      {/* Analysis Data */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Vision Analysis */}
-                        <div>
-                          <h4 className="font-medium text-neutral-900 mb-3">
-                            Vision Analysis
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-neutral-600">
-                                Blink Rate:
-                              </span>
-                              <span className="text-neutral-900">
-                                {session.visionData?.blinkRate || "N/A"}/min
-                              </span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <h4 className="font-medium text-neutral-900 mb-3">
+                              Vision Analysis
+                            </h4>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-neutral-600">Blink Rate:</span>
+                                <span className="text-neutral-900">
+                                  {session.visionData?.blinkRate || "N/A"}/min
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-neutral-600">Eye Movement:</span>
+                                <span className="text-neutral-900">
+                                  {session.visionData?.eyeMovement || "N/A"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-neutral-600">Expression:</span>
+                                <span className="text-neutral-900">
+                                  {session.visionData?.facialExpression || "N/A"}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-neutral-600">
-                                Eye Movement:
-                              </span>
-                              <span className="text-neutral-900">
-                                {session.visionData?.eyeMovement || "N/A"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-neutral-600">
-                                Expression:
-                              </span>
-                              <span className="text-neutral-900">
-                                {session.visionData?.facialExpression || "N/A"}
-                              </span>
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-neutral-900 mb-3">
+                              Voice Analysis
+                            </h4>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-neutral-600">Tone:</span>
+                                <span className="text-neutral-900">
+                                  {session.voiceAnalysis?.tone || "N/A"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-neutral-600">Pace:</span>
+                                <span className="text-neutral-900">
+                                  {session.voiceAnalysis?.pace || "N/A"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-neutral-600">Clarity:</span>
+                                <span className="text-neutral-900">
+                                  {session.voiceAnalysis?.clarity || "N/A"}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
 
-                        {/* Voice Analysis */}
-                        <div>
-                          <h4 className="font-medium text-neutral-900 mb-3">
-                            Voice Analysis
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-neutral-600">Tone:</span>
-                              <span className="text-neutral-900">
-                                {session.voiceAnalysis?.tone || "N/A"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-neutral-600">Pace:</span>
-                              <span className="text-neutral-900">
-                                {session.voiceAnalysis?.pace || "N/A"}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-neutral-600">Clarity:</span>
-                              <span className="text-neutral-900">
-                                {session.voiceAnalysis?.clarity || "N/A"}
-                              </span>
-                            </div>
+                        <div className="flex items-center justify-end pt-4 border-t border-neutral-200">
+                          <div className="flex space-x-2">
+                            <button className="btn-secondary text-sm flex items-center space-x-1">
+                              <Download className="w-4 h-4" />
+                              <span>Export</span>
+                            </button>
+                            <button className="btn-primary text-sm flex items-center space-x-1">
+                              <Eye className="w-4 h-4" />
+                              <span>View Details</span>
+                            </button>
                           </div>
                         </div>
                       </div>
-
-                      {/* Documents and Actions */}
-                      <div className="flex items-center justify-end pt-4 border-t border-neutral-200">
-                        <div className="flex space-x-2">
-                          <button className="btn-secondary text-sm flex items-center space-x-1">
-                            <Download className="w-4 h-4" />
-                            <span>Export</span>
-                          </button>
-                          <button className="btn-primary text-sm flex items-center space-x-1">
-                            <Eye className="w-4 h-4" />
-                            <span>View Details</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </motion.div>
-            ))
+                    </motion.div>
+                  )}
+                </motion.div>
+              );
+            })
           )}
         </div>
       </div>

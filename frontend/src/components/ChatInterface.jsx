@@ -751,7 +751,9 @@ const ChatInterface = () => {
 
       {/* Diagnosis Results Modal */}
       <DiagnosisResults
-        diagnoses={diagnosisResults}
+        diagnoses={diagnosisResults.filter(
+          (diagnosis) => diagnosis.confidence >= 0.8
+        )}
         isOpen={showDiagnosis}
         onClose={() => setShowDiagnosis(false)}
       />

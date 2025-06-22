@@ -119,17 +119,53 @@ async def chat_with_ai(request: ChatRequest):
         if not request.message.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-        # Prepare the prompt with medical context
+        # Extract all document analyses
+        document_analyses = [
+            msg.content for msg in chat_histories[request.user_id]
+            if msg.content.startswith("[Document Analysis]")
+        ]
+
+        document_context = ""
+        if document_analyses:
+            document_context = (
+                "==== Document Analyses ====\n"
+                + "\n".join(document_analyses)
+                + "\n==== End of Document Analyses ====\n\n"
+            )
+
+        # Build conversation history
         history_context = ""
-        for msg in chat_histories[request.user_id][-10:]:  # last 10 messages
+        for msg in chat_histories[request.user_id][-10:]:
             role = "Patient" if msg.type == "user" else "AI Doctor"
             history_context += f"{role}: {msg.content}\n"
 
+        # Extract key facts from chat history
+        key_facts = [
+            msg.content for msg in chat_histories[request.user_id]
+            if msg.content.startswith("[Key Fact]")
+        ]
+
+        key_facts_context = ""
+        if key_facts:
+            key_facts_context = (
+                "Important facts from previous documents:\n"
+                + "\n".join(key_facts)
+                + "\n\n"
+            )
+
         medical_prompt = f"""
+        {document_context}
+        {key_facts_context}
         Conversation so far:
         {history_context}
 
         Patient Question: {request.message}
+
+        Instructions:
+        - Use any document analyses above to inform your answer.
+        - Also use the conversation so far.
+        - Be clear if you are referencing information from a document.
+        - If you need more information, ask the user for clarification.
 
         Please provide a helpful medical response following these guidelines:
         1. Be informative but emphasize the importance of professional medical consultation
@@ -502,6 +538,26 @@ async def analyze_document(document: UploadFile = File(...), user_id: str = Form
                 content=f"[Document Analysis] {response.text}",
                 timestamp=now,
             ))
+            
+            # After getting response.text (the summary)
+            key_facts_prompt = f"""
+            Extract the 3-5 most important facts, findings, or recommendations from the following medical document summary. 
+            Format each as a single, clear sentence.
+
+            Summary:
+            {response.text}
+            """
+
+            key_facts_response = model.generate_content(key_facts_prompt)
+            key_facts = [fact.strip() for fact in key_facts_response.text.split('\n') if fact.strip()]
+            
+            now = datetime.utcnow().isoformat()
+            for fact in key_facts:
+                chat_histories[user_id].append(ChatMessage(
+                    type="ai",
+                    content=f"[Key Fact] {fact}",
+                    timestamp=now,
+                ))
             
             return ChatResponse(
                 response=response.text,

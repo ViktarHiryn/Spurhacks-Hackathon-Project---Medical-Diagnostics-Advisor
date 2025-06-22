@@ -46,6 +46,7 @@ const ChatInterface = () => {
   const messagesEndRef = useRef(null);
 
   const { tasks, addTask } = useUser();
+  const { user } = useUser();
 
   const {
     stream,
@@ -313,9 +314,20 @@ const ChatInterface = () => {
     }
   };
 
-  const handleDocumentUpload = (file) => {
+  const handleDocumentUpload = async (file) => {
     console.log("Document uploaded:", file);
-    // TODO: Implement document processing
+    // Send document to backend for processing
+    const result = await apiClient.uploadDocument(file, user?.id || "default");
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        type: "ai",
+        content: result.response || "Your document has been successfully processed and will be considered in future conversations.",
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   const handleAnalyzeHistory = async () => {

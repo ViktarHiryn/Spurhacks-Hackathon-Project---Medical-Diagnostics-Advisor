@@ -98,11 +98,23 @@ class APIClient {
       formData.append("user_id", userId);
     }
 
-    return this.request("/api/documents/upload", {
-      method: "POST",
-      headers: {}, // Remove Content-Type to let browser set it for FormData
-      body: formData,
-    });
+    // Use the correct endpoint and do not set Content-Type for FormData
+    const url = `${this.baseURL}/api/document/analyze`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Document upload failed:", error);
+      throw error;
+    }
   }
 
   // Upload video (for future use)

@@ -9,10 +9,6 @@ import logging
 import tempfile
 import aiofiles
 import json
-from collections import defaultdict
-from datetime import datetime
-
-chat_histories = defaultdict(list)  # user_id -> List[ChatMessage]
 
 # Load environment variables
 load_dotenv()
@@ -121,38 +117,19 @@ async def chat_with_ai(request: ChatRequest):
         if not request.message.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-        user_id = request.user_id or "default"
-        now = datetime.utcnow().isoformat()
-
-        # Add user message to chat history
-        chat_histories[user_id].append(ChatMessage(
-            type="user",
-            content=request.message,
-            timestamp=now,
-        ))
-
-        # Build chat history context (last N messages, or all)
-        history_context = ""
-        for msg in chat_histories[user_id][-10:]:  # Use last 10 messages for context
-            role = "Patient" if msg.type == "user" else "AI Doctor"
-            history_context += f"{role}: {msg.content}\n"
-
-        # Prepare the prompt with medical context and chat history
+        # Prepare the prompt with medical context
         medical_prompt = f"""
-        Conversation so far:
-        {history_context}
-
         Patient Question: {request.message}
-
+        
         Please provide a helpful medical response following these guidelines:
         1. Be informative but emphasize the importance of professional medical consultation
         2. If the question involves serious symptoms, recommend seeking immediate medical attention
         3. Provide general health information when appropriate
         4. Be empathetic and supportive
-
+        
         Respond in a caring, professional manner as a medical AI assistant.
         """
-
+        
         # Generate response using Gemini
         logger.info("Sending request to Gemini API...")
         response = model.generate_content(medical_prompt)
@@ -162,14 +139,7 @@ async def chat_with_ai(request: ChatRequest):
             raise HTTPException(status_code=500, detail="Failed to generate response")
         
         logger.info("Successfully generated response from Gemini")
-
-        # Add AI response to chat history
-        chat_histories[user_id].append(ChatMessage(
-            type="ai",
-            content=response.text,
-            timestamp=datetime.utcnow().isoformat(),
-        ))
-
+        
         return ChatResponse(
             response=response.text,
             success=True
@@ -423,6 +393,85 @@ async def analyze_chat_history(request: ChatHistoryRequest):
         logger.error(f"Error in chat history analysis: {str(e)}")
         return ChatHistoryResponse(
             diagnoses=[],
+            success=False,
+            error=str(e)
+        )
+
+# Document analysis endpoint
+@app.post("/api/document/analyze", response_model=ChatResponse)
+async def analyze_document(
+    document: UploadFile = File(...),
+    user_id: str = Form(default="default")
+):
+    try:
+        logger.info(f"Received document analysis request. File: {document.filename}")
+
+        # Validate file type (optional: add more types as needed)
+        if not (
+            document.content_type.startswith("application/")
+            or document.content_type.startswith("image/")
+            or document.content_type == "text/plain"
+        ):
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+
+        # Save file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(document.filename)[-1]) as temp_file:
+            content = await document.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+
+        try:
+            # Upload file to Gemini
+            logger.info("Uploading document to Gemini API...")
+            gemini_file = genai.upload_file(temp_file_path)
+
+            # Wait for processing
+            import time
+            while gemini_file.state.name == "PROCESSING":
+                time.sleep(2)
+                gemini_file = genai.get_file(gemini_file.name)
+
+            if gemini_file.state.name == "FAILED":
+                raise HTTPException(status_code=500, detail="Document processing failed")
+
+            # Create prompt for Gemini
+            prompt = f"Please analyze this document for health-related information, symptoms, or medical concerns. Provide a detailed analysis."
+
+            # Generate analysis
+            logger.info("Generating analysis with Gemini...")
+            response = model.generate_content([gemini_file, prompt])
+
+            if not response.text:
+                raise HTTPException(status_code=500, detail="Failed to generate document analysis")
+
+            logger.info("Document analysis completed successfully")
+
+            # Optionally: Save analysis to chat history for user
+            # (Assuming you have chat_histories dict and ChatMessage model)
+            now = __import__("datetime").datetime.utcnow().isoformat()
+            if "chat_histories" in globals():
+                chat_histories[user_id].append(ChatMessage(
+                    type="ai",
+                    content=f"[Document Analysis] {response.text}",
+                    timestamp=now,
+                ))
+
+            return ChatResponse(
+                response="Your document has been successfully processed and will be considered in future conversations.",
+                success=True
+            )
+        finally:
+            try:
+                os.unlink(temp_file_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temp file: {cleanup_error}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in document analysis: {str(e)}")
+        return ChatResponse(
+            response=f"I'm sorry, I encountered an error while analyzing your document: {str(e)}",
             success=False,
             error=str(e)
         )

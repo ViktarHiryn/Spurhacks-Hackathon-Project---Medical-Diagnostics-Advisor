@@ -14,13 +14,18 @@ import {
   Square,
   CheckCircle,
   History,
+  Volume2,
+  VolumeX,
+  Settings,
 } from "lucide-react";
 import Avatar from "./Avatar";
 import TaskList from "./TaskList";
 import DocumentUploader from "./DocumentUploader";
 import DiagnosisResults from "./DiagnosisResults";
+import VoiceSettings from "./VoiceSettings";
 import { useMediaStream } from "../hooks/useMediaStream";
 import { useSTT } from "../hooks/useSTT";
+import { useTTS } from "../hooks/useTTS";
 import { useUser } from "../context/UserContext";
 import apiClient from "../api/client";
 
@@ -35,6 +40,8 @@ const ChatInterface = () => {
   const [isAnalyzingHistory, setIsAnalyzingHistory] = useState(false);
   const [diagnosisResults, setDiagnosisResults] = useState([]);
   const [showDiagnosis, setShowDiagnosis] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   const messagesEndRef = useRef(null);
 
@@ -71,17 +78,40 @@ const ChatInterface = () => {
     resetTranscript,
   } = useSTT();
 
+  const {
+    isSpeaking,
+    isSupported: ttsSupported,
+    voices,
+    selectedVoice,
+    volume,
+    rate,
+    pitch,
+    speak,
+    stop: stopSpeaking,
+    setSelectedVoice,
+    setVolume,
+    setRate,
+    setPitch,
+  } = useTTS();
+
   // Initialize component with welcome message
   useEffect(() => {
-    setMessages([
-      {
-        id: 1,
-        type: "ai",
-        content:
-          "Hello! I'm your AI medical assistant. You can chat with me or record a video for health analysis. How can I help you today?",
-        timestamp: new Date(),
-      },
-    ]);
+    const welcomeMessage = {
+      id: 1,
+      type: "ai",
+      content:
+        "Hello! I'm your AI medical assistant. You can chat with me or record a video for health analysis. How can I help you today?",
+      timestamp: new Date(),
+    };
+
+    setMessages([welcomeMessage]);
+
+    // Speak the welcome message if voice is enabled
+    if (voiceEnabled && ttsSupported) {
+      setTimeout(() => {
+        speak(welcomeMessage.content);
+      }, 1000); // Small delay to ensure component is mounted
+    }
   }, []);
 
   // Auto-scroll to bottom of messages
@@ -139,27 +169,49 @@ const ChatInterface = () => {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      console.error("Video analysis failed:", error);
 
-      // Add error message
+      // Stop analyzing immediately after message is displayed
+      setIsAnalyzingVideo(false);
+
+      // Speak the AI response if voice is enabled (don't await)
+      if (voiceEnabled && ttsSupported && result.analysis) {
+        speak(result.analysis);
+      }
+
+      // Clear the recorded video
+      clearRecording();
+    } catch (error) {
+      console.error("Error analyzing video:", error);
       const errorMessage = {
         id: Date.now() + 1,
         type: "ai",
-        content: `I'm sorry, I encountered an error while analyzing your video: ${error.message}. Please try recording again or switch to text chat.`,
+        content:
+          "I'm sorry, I had trouble analyzing your video. Please try again or describe your symptoms in text.",
         timestamp: new Date(),
         isError: true,
       };
-
       setMessages((prev) => [...prev, errorMessage]);
-    } finally {
+
+      // Stop analyzing immediately after error message is displayed
       setIsAnalyzingVideo(false);
-      clearRecording(); // Clear the recorded video
+
+      // Speak error message if voice is enabled (don't await)
+      if (voiceEnabled && ttsSupported) {
+        speak(errorMessage.content);
+      }
+
+      // Clear the recorded video
+      clearRecording();
     }
   };
 
   const sendMessage = async () => {
-    if (!currentMessage.trim()) return;
+    if (!currentMessage.trim() || isProcessing) return;
+
+    // Stop any current speech
+    if (isSpeaking) {
+      stopSpeaking();
+    }
 
     const userMessage = {
       id: Date.now(),
@@ -172,29 +224,37 @@ const ChatInterface = () => {
     setIsProcessing(true);
 
     try {
-      // Send to FastAPI backend with Gemini integration
-      const response = await apiClient.sendChatMessage(currentMessage);
+      const result = await apiClient.sendChatMessage(currentMessage);
 
-      if (response.success) {
-        const aiMessage = {
-          id: Date.now() + 1,
-          type: "ai",
-          content: response.response,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, aiMessage]);
-      } else {
-        // Handle error response
-        const errorMessage = {
-          id: Date.now() + 1,
-          type: "ai",
-          content:
-            response.response ||
-            "I'm sorry, I'm experiencing technical difficulties. Please try again later.",
-          timestamp: new Date(),
-          isError: true,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: "ai",
+        content: result.response,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+
+      // Stop processing immediately after message is displayed
+      setIsProcessing(false);
+
+      // Speak the AI response if voice is enabled (don't await - let it run in background)
+      if (voiceEnabled && ttsSupported && result.response) {
+        speak(result.response); // Remove await here
+      }
+
+      // Generate sample tasks based on the conversation
+      if (result.response.toLowerCase().includes("recommend")) {
+        const sampleTasks = [
+          "Drink 8 glasses of water daily",
+          "Take prescribed medication as directed",
+          "Get 7-8 hours of sleep",
+          "Monitor symptoms daily",
+        ];
+
+        sampleTasks.forEach((task) => {
+          addTask(task, "medium");
+        });
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -207,8 +267,14 @@ const ChatInterface = () => {
         isError: true,
       };
       setMessages((prev) => [...prev, errorMessage]);
-    } finally {
+
+      // Stop processing immediately after error message is displayed
       setIsProcessing(false);
+
+      // Speak error message if voice is enabled (don't await)
+      if (voiceEnabled && ttsSupported) {
+        speak(errorMessage.content); // Remove await here
+      }
     }
 
     setCurrentMessage("");
@@ -216,6 +282,11 @@ const ChatInterface = () => {
   };
 
   const handleStartListening = async () => {
+    // Stop any current speech before listening
+    if (isSpeaking) {
+      stopSpeaking();
+    }
+
     await startListening();
     if (!isVideoEnabled) {
       await startCamera();
@@ -226,6 +297,19 @@ const ChatInterface = () => {
     stopListening();
     if (transcript) {
       sendMessage();
+    }
+  };
+
+  const toggleVoice = () => {
+    if (voiceEnabled && isSpeaking) {
+      stopSpeaking();
+    }
+    setVoiceEnabled(!voiceEnabled);
+  };
+
+  const handleTestVoice = (text) => {
+    if (text.trim()) {
+      speak(text);
     }
   };
 
@@ -280,6 +364,7 @@ const ChatInterface = () => {
             <Avatar
               isListening={isListening}
               isProcessing={isProcessing || isAnalyzingVideo}
+              isSpeaking={isSpeaking}
               isVideoActive={isVideoEnabled}
             />
             <div>
@@ -291,11 +376,61 @@ const ChatInterface = () => {
                   ? isAnalyzingVideo
                     ? "Analyzing your video..."
                     : "Thinking..."
+                  : isSpeaking
+                  ? "Speaking..."
                   : isListening
-                  ? "Listening..."
-                  : "Ready to help"}
+                    ? "Listening..."
+                    : "Ready to help"}
               </p>
             </div>
+          </div>
+
+          {/* Voice Control */}
+          <div className="flex items-center space-x-2">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={toggleVoice}
+              className={`p-3 rounded-xl transition-colors ${
+                voiceEnabled
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
+              }`}
+              title={voiceEnabled ? "Voice On" : "Voice Off"}
+            >
+              {voiceEnabled ? (
+                <Volume2 className="w-5 h-5" />
+              ) : (
+                <VolumeX className="w-5 h-5" />
+              )}
+            </motion.button>
+
+            {/* Voice Settings Button */}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowVoiceSettings(true)}
+              className="p-3 rounded-xl bg-neutral-200 text-neutral-600 hover:bg-neutral-300 transition-colors"
+              title="Voice Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </motion.button>
+
+            {/* Stop Speaking Button (only show when speaking) */}
+            {isSpeaking && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={stopSpeaking}
+                className="p-3 rounded-xl bg-red-600 text-white hover:bg-red-700 transition-colors"
+                title="Stop Speaking"
+              >
+                <Square className="w-4 h-4" />
+              </motion.button>
+            )}
           </div>
 
           {/* Video Controls */}
@@ -383,22 +518,20 @@ const ChatInterface = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className={`flex ${
-                message.type === "user" ? "justify-end" : "justify-start"
-              }`}
+              className={`flex ${message.type === "user" ? "justify-end" : "justify-start"
+                }`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                  message.type === "user"
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.type === "user"
                     ? message.isVideo
                       ? "bg-purple-600 text-white"
                       : "bg-primary-600 text-white"
                     : message.isError
-                    ? "bg-red-100 text-red-800 border border-red-200"
-                    : message.isVideoAnalysis
-                    ? "bg-blue-50 text-blue-900 border border-blue-200"
-                    : "bg-neutral-100 text-neutral-800"
-                }`}
+                      ? "bg-red-100 text-red-800 border border-red-200"
+                      : message.isVideoAnalysis
+                        ? "bg-blue-50 text-blue-900 border border-blue-200"
+                        : "bg-neutral-100 text-neutral-800"
+                  }`}
               >
                 {message.isVideo && (
                   <div className="flex items-center space-x-2 mb-1">
@@ -455,13 +588,11 @@ const ChatInterface = () => {
             whileTap={{ scale: 0.95 }}
             onClick={isVideoEnabled ? stopCamera : startCamera}
             disabled={videoLoading || isRecording}
-            className={`p-3 rounded-xl transition-colors ${
-              isVideoEnabled
+            className={`p-3 rounded-xl transition-colors ${isVideoEnabled
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-            } ${
-              videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
-            }`}
+              } ${videoLoading || isRecording ? "opacity-50 cursor-not-allowed" : ""
+              }`}
           >
             {videoLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -478,11 +609,10 @@ const ChatInterface = () => {
             whileTap={{ scale: 0.95 }}
             onClick={toggleAudio}
             disabled={!isVideoEnabled}
-            className={`p-3 rounded-xl transition-colors ${
-              isAudioEnabled && isVideoEnabled
+            className={`p-3 rounded-xl transition-colors ${isAudioEnabled && isVideoEnabled
                 ? "bg-green-600 text-white hover:bg-green-700"
                 : "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-            } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
+              } ${!isVideoEnabled ? "opacity-50 cursor-not-allowed" : ""}`}
           >
             {isAudioEnabled && isVideoEnabled ? (
               <Mic className="w-5 h-5" />
@@ -497,7 +627,13 @@ const ChatInterface = () => {
               type="text"
               value={currentMessage}
               onChange={(e) => setCurrentMessage(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              onKeyUp={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault(); // prevents accidental form submissions
+                  sendMessage();
+                  setCurrentMessage(""); // clear input after sending
+                }
+              }}
               placeholder="Type your message..."
               disabled={isProcessing || isAnalyzingVideo || isRecording}
               className="w-full px-4 py-3 pr-12 border border-neutral-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
@@ -594,6 +730,22 @@ const ChatInterface = () => {
           />
         )}
       </AnimatePresence>
+
+      {/* Voice Settings Modal */}
+      <VoiceSettings
+        isOpen={showVoiceSettings}
+        onClose={() => setShowVoiceSettings(false)}
+        voices={voices}
+        selectedVoice={selectedVoice}
+        volume={volume}
+        rate={rate}
+        pitch={pitch}
+        onVoiceChange={setSelectedVoice}
+        onVolumeChange={setVolume}
+        onRateChange={setRate}
+        onPitchChange={setPitch}
+        onTestVoice={handleTestVoice}
+      />
 
       {/* Diagnosis Results Modal */}
       <DiagnosisResults

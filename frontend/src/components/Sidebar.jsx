@@ -28,7 +28,7 @@ const Sidebar = () => {
 
   const navItems = [
     {
-      path: "/",
+      path: "/chat",
       icon: MessageCircle,
       label: "AI Doctor Chat",
       description: "Chat & video analysis with AI doctor",
@@ -131,15 +131,20 @@ const Sidebar = () => {
     <div className="w-80 bg-white border-r border-neutral-200 flex flex-col h-full">
       {/* Header */}
       <div className="p-6 border-b border-neutral-200">
-        <div className="flex items-center space-x-3">
+        <Link
+          to="/"
+          className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+        >
           <div className="bg-primary-700 p-2 rounded-lg">
             <Stethoscope className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-neutral-900">AI Doctor</h1>
-            <p className="text-sm text-neutral-600">Medical Diagnostics Advisor</p>
+            <h1 className="text-xl font-bold text-neutral-900">VitAI</h1>
+            <p className="text-sm text-neutral-600">
+              Advanced Medical AI Assistant
+            </p>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -166,7 +171,9 @@ const Sidebar = () => {
                 />
                 <div className="flex-1">
                   <div className="font-medium">{item.label}</div>
-                  <div className="text-xs text-neutral-500 mt-0.5">{item.description}</div>
+                  <div className="text-xs text-neutral-500 mt-0.5">
+                    {item.description}
+                  </div>
                 </div>
               </Link>
             );

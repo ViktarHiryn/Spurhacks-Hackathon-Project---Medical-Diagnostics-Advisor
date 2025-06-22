@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import apiClient from "../api/client";
+import { useUser } from "../context/UserContext";
 
 const DocumentUploader = ({ onUpload, onClose }) => {
   const [dragActive, setDragActive] = useState(false);
@@ -18,6 +19,8 @@ const DocumentUploader = ({ onUpload, onClose }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({});
   const fileInputRef = useRef(null);
+  const { user } = useUser();
+  const [aiMessage, setAiMessage] = useState("");
 
   const allowedTypes = {
     "application/pdf": "PDF",
@@ -93,6 +96,7 @@ const DocumentUploader = ({ onUpload, onClose }) => {
     if (files.length === 0) return;
 
     setUploading(true);
+    setAiMessage("");
 
     for (const fileObj of files) {
       if (fileObj.status !== "pending") continue;
@@ -104,34 +108,26 @@ const DocumentUploader = ({ onUpload, onClose }) => {
           )
         );
 
-        const formData = new FormData();
-        formData.append("document", fileObj.file);
-        formData.append("type", "medical_document");
-
-        // Simulate progress (you can implement real progress tracking)
-        const progressInterval = setInterval(() => {
-          setUploadProgress((prev) => ({
-            ...prev,
-            [fileObj.id]: Math.min((prev[fileObj.id] || 0) + 10, 90),
-          }));
-        }, 200);
-
-        const response = await apiClient.chat.uploadDocument(formData);
-
-        clearInterval(progressInterval);
-        setUploadProgress((prev) => ({ ...prev, [fileObj.id]: 100 }));
+        // Upload to backend and get AI confirmation
+        const response = await apiClient.uploadDocument(
+          fileObj.file,
+          user?.id || "default"
+        );
 
         setFiles((prev) =>
           prev.map((f) =>
             f.id === fileObj.id
-              ? { ...f, status: "completed", response: response.data }
+              ? { ...f, status: "completed", response }
               : f
           )
         );
 
-        onUpload(fileObj.file);
+        setAiMessage(
+            "Your document has been successfully processed and will be considered in future conversations."
+        );
+
+        if (onUpload) onUpload(fileObj.file, response.response); // response.response is the summary text
       } catch (error) {
-        console.error("Upload error:", error);
         setFiles((prev) =>
           prev.map((f) =>
             f.id === fileObj.id
@@ -139,6 +135,7 @@ const DocumentUploader = ({ onUpload, onClose }) => {
               : f
           )
         );
+        setAiMessage("Sorry, I couldn't analyze your document. Please try again.");
       }
     }
 
@@ -273,6 +270,13 @@ const DocumentUploader = ({ onUpload, onClose }) => {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* AI Message */}
+          {aiMessage && (
+            <div className="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 text-blue-700 rounded-lg">
+              {aiMessage}
             </div>
           )}
 

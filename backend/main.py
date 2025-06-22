@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 import logging
 import tempfile
 import json
+from collections import defaultdict
 from datetime import datetime
 from pymongo import MongoClient
 from bson import ObjectId
@@ -151,10 +152,54 @@ async def chat_with_ai(request: ChatRequest):
         if not request.message.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-        # Prepare the prompt with medical context
+        # Extract all document analyses
+        document_analyses = [
+            msg.content for msg in chat_histories[request.user_id]
+            if msg.content.startswith("[Document Analysis]")
+        ]
+
+        document_context = ""
+        if document_analyses:
+            document_context = (
+                "==== Document Analyses ====\n"
+                + "\n".join(document_analyses)
+                + "\n==== End of Document Analyses ====\n\n"
+            )
+
+        # Build conversation history
+        history_context = ""
+        for msg in chat_histories[request.user_id][-10:]:
+            role = "Patient" if msg.type == "user" else "AI Doctor"
+            history_context += f"{role}: {msg.content}\n"
+
+        # Extract key facts from chat history
+        key_facts = [
+            msg.content for msg in chat_histories[request.user_id]
+            if msg.content.startswith("[Key Fact]")
+        ]
+
+        key_facts_context = ""
+        if key_facts:
+            key_facts_context = (
+                "Important facts from previous documents:\n"
+                + "\n".join(key_facts)
+                + "\n\n"
+            )
+
         medical_prompt = f"""
+        {document_context}
+        {key_facts_context}
+        Conversation so far:
+        {history_context}
+
         Patient Question: {request.message}
-        
+
+        Instructions:
+        - Use any document analyses above to inform your answer.
+        - Also use the conversation so far.
+        - Be clear if you are referencing information from a document.
+        - If you need more information, ask the user for clarification.
+
         Please provide a helpful medical response following these guidelines:
         1. Be informative but emphasize the importance of professional medical consultation
         2. If the question involves serious symptoms, recommend seeking immediate medical attention
@@ -173,6 +218,20 @@ async def chat_with_ai(request: ChatRequest):
             raise HTTPException(status_code=500, detail="Failed to generate response")
         
         logger.info("Successfully generated response from Gemini")
+        
+        # When user sends a message:
+        now = datetime.utcnow().isoformat()
+        chat_histories[request.user_id].append(ChatMessage(
+            type="user",
+            content=request.message,
+            timestamp=now,
+        ))
+        # When Gemini responds:
+        chat_histories[request.user_id].append(ChatMessage(
+            type="ai",
+            content=response.text,
+            timestamp=now,
+        ))
         
         return ChatResponse(
             response=response.text,
@@ -544,6 +603,134 @@ async def analyze_chat_history(request: ChatHistoryRequest):
             success=False,
             error=str(e)
         )
+
+# Document analysis endpoint
+@app.post("/api/document/analyze", response_model=ChatResponse)
+async def analyze_document(document: UploadFile = File(...), user_id: str = Form(default="default")):
+    """
+    Analyze uploaded document (e.g., PDF, DOCX) using Gemini API for health-related insights
+    """
+    try:
+        logger.info(f"Received document analysis request. File: {document.filename}, Size: {document.size}")
+        
+        # Validate file type
+        if not document.content_type in ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
+            raise HTTPException(status_code=400, detail="File must be a PDF or DOCX document")
+        
+        # Check file size (limit to 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB in bytes
+        if document.size and document.size > max_size:
+            raise HTTPException(status_code=400, detail="Document file too large (max 10MB)")
+        
+        # Create temporary file to store the document
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            # Read document content and write to temp file
+            document_content = await document.read()
+            temp_file.write(document_content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Upload document file to Gemini
+            logger.info("Uploading document to Gemini API...")
+            document_file = genai.upload_file(temp_file_path)
+            
+            # Wait for processing to complete
+            logger.info("Waiting for document processing...")
+            import time
+            while document_file.state.name == "PROCESSING":
+                time.sleep(2)
+                document_file = genai.get_file(document_file.name)
+            
+            if document_file.state.name == "FAILED":
+                raise HTTPException(status_code=500, detail="Document processing failed")
+            
+            # Create the medical analysis prompt
+            medical_prompt = f"""
+            Please analyze this document from a medical/health perspective. Look for:
+            
+            1. **Medical History**: Any relevant past medical history, surgeries, or treatments
+            2. **Current Medications**: List of current medications and dosages
+            3. **Allergies**: Any known allergies or adverse reactions
+            4. **Symptoms**: Description of any current symptoms or health concerns
+            5. **Lifestyle Factors**: Information on diet, exercise, alcohol, tobacco use, etc.
+            
+            User's specific request: Extract health insights from this document.
+            
+            Important Guidelines:
+            - Provide observations but emphasize that this is NOT a medical diagnosis
+            - Recommend consulting healthcare professionals for any concerns
+            - Be thorough but avoid causing unnecessary alarm
+            - Focus on objective observations rather than definitive conclusions
+            - If you see concerning symptoms, advise seeking medical attention
+            
+            Please provide a structured analysis with your observations and recommendations.
+            """
+            
+            # Generate analysis using Gemini
+            logger.info("Generating analysis with Gemini...")
+            response = model.generate_content([
+                document_file,
+                medical_prompt
+            ])
+            
+            if not response.text:
+                raise HTTPException(status_code=500, detail="Failed to generate document analysis")
+
+            logger.info("Document analysis completed successfully")
+            
+            # After generating the summary in /api/document/analyze:
+            now = datetime.utcnow().isoformat()
+            chat_histories[user_id].append(ChatMessage(
+                type="ai",
+                content=f"[Document Analysis] {response.text}",
+                timestamp=now,
+            ))
+            
+            # After getting response.text (the summary)
+            key_facts_prompt = f"""
+            Extract the 3-5 most important facts, findings, or recommendations from the following medical document summary. 
+            Format each as a single, clear sentence.
+
+            Summary:
+            {response.text}
+            """
+
+            key_facts_response = model.generate_content(key_facts_prompt)
+            key_facts = [fact.strip() for fact in key_facts_response.text.split('\n') if fact.strip()]
+            
+            now = datetime.utcnow().isoformat()
+            for fact in key_facts:
+                chat_histories[user_id].append(ChatMessage(
+                    type="ai",
+                    content=f"[Key Fact] {fact}",
+                    timestamp=now,
+                ))
+            
+            return ChatResponse(
+                response=response.text,
+                success=True
+            )
+            
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(temp_file_path)
+                logger.info("Temporary file cleaned up")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temp file: {cleanup_error}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in document analysis: {str(e)}")
+        return ChatResponse(
+            response=f"Error: {str(e)}",
+            success=False,
+            error=str(e)
+        )
+
+# In-memory storage for chat histories
+chat_histories = defaultdict(list)  # user_id -> List[ChatMessage]
 
 if __name__ == "__main__":
     import uvicorn

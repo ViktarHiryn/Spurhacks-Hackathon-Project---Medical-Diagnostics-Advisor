@@ -112,6 +112,31 @@ class APIClient {
     return this.request(`/api/history/${documentId}`, {
       method: "DELETE",
     });
+  // Upload document (for future use)
+  async uploadDocument(file, userId = null) {
+    const formData = new FormData();
+    formData.append("document", file);
+    if (userId) {
+      formData.append("user_id", userId);
+    }
+
+    // Use the correct endpoint and do not set Content-Type for FormData
+    const url = `${this.baseURL}/api/document/analyze`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Document upload failed:", error);
+      throw error;
+    }
   }
 
   // Upload video (for future use)

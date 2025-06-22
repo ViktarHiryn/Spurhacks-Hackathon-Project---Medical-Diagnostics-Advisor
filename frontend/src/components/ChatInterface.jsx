@@ -46,6 +46,7 @@ const ChatInterface = () => {
   const messagesEndRef = useRef(null);
 
   const { tasks, addTask } = useUser();
+  const { user } = useUser();
 
   const {
     stream,
@@ -308,9 +309,25 @@ const ChatInterface = () => {
     }
   };
 
-  const handleDocumentUpload = (file) => {
-    console.log("Document uploaded:", file);
-    // TODO: Implement document processing
+  const handleDocumentUpload = (file, summary) => {
+    // Optionally, add a user message for the upload
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        type: "user",
+        content: `📄 Uploaded document: ${file.name}`,
+        timestamp: new Date(),
+        isDocument: true,
+      },
+      {
+        id: Date.now() + 1,
+        type: "ai",
+        content: summary || "Your document has been successfully processed and will be considered in future conversations.",
+        timestamp: new Date(),
+        isDocumentAnalysis: true,
+      },
+    ]);
   };
 
   const handleAnalyzeHistory = async () => {
@@ -734,7 +751,10 @@ const ChatInterface = () => {
               exit={{ opacity: 0, height: 0 }}
               className="mt-4"
             >
-              <DocumentUploader onUpload={handleDocumentUpload} />
+              <DocumentUploader
+                onUpload={handleDocumentUpload}
+                onClose={() => setShowUploader(false)}
+              />
             </motion.div>
           )}
         </AnimatePresence>

@@ -9,6 +9,8 @@ import logging
 import tempfile
 import aiofiles
 import json
+from collections import defaultdict
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -118,9 +120,17 @@ async def chat_with_ai(request: ChatRequest):
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
         # Prepare the prompt with medical context
+        history_context = ""
+        for msg in chat_histories[request.user_id][-10:]:  # last 10 messages
+            role = "Patient" if msg.type == "user" else "AI Doctor"
+            history_context += f"{role}: {msg.content}\n"
+
         medical_prompt = f"""
+        Conversation so far:
+        {history_context}
+
         Patient Question: {request.message}
-        
+
         Please provide a helpful medical response following these guidelines:
         1. Be informative but emphasize the importance of professional medical consultation
         2. If the question involves serious symptoms, recommend seeking immediate medical attention
@@ -139,6 +149,20 @@ async def chat_with_ai(request: ChatRequest):
             raise HTTPException(status_code=500, detail="Failed to generate response")
         
         logger.info("Successfully generated response from Gemini")
+        
+        # When user sends a message:
+        now = datetime.utcnow().isoformat()
+        chat_histories[request.user_id].append(ChatMessage(
+            type="user",
+            content=request.message,
+            timestamp=now,
+        ))
+        # When Gemini responds:
+        chat_histories[request.user_id].append(ChatMessage(
+            type="ai",
+            content=response.text,
+            timestamp=now,
+        ))
         
         return ChatResponse(
             response=response.text,
@@ -471,6 +495,14 @@ async def analyze_document(document: UploadFile = File(...), user_id: str = Form
 
             logger.info("Document analysis completed successfully")
             
+            # After generating the summary in /api/document/analyze:
+            now = datetime.utcnow().isoformat()
+            chat_histories[user_id].append(ChatMessage(
+                type="ai",
+                content=f"[Document Analysis] {response.text}",
+                timestamp=now,
+            ))
+            
             return ChatResponse(
                 response=response.text,
                 success=True
@@ -493,6 +525,9 @@ async def analyze_document(document: UploadFile = File(...), user_id: str = Form
             success=False,
             error=str(e)
         )
+
+# In-memory storage for chat histories
+chat_histories = defaultdict(list)  # user_id -> List[ChatMessage]
 
 if __name__ == "__main__":
     import uvicorn
